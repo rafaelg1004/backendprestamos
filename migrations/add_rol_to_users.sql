@@ -9,7 +9,7 @@ UPDATE users SET rol = 'cliente' WHERE rol IS NULL OR rol = '';
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@prestamos.com') THEN
-    INSERT INTO users (email, password, rol, creado_en)
+    INSERT INTO users (email, password, rol, created_at)
     VALUES (
       'admin@prestamos.com',
       '$2b$10$rZQ5Y8Z8Z8Z8Z8Z8Z8Z8ZeQ5Y8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z', -- admin123
