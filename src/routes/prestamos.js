@@ -8,7 +8,13 @@ const {
 } = require("../middleware/validate");
 const { verificarAuth } = require("../middleware/auth");
 
-// Todas las rutas requieren autenticación
+// Ruta pública para consultar préstamos por cédula (sin autenticación)
+router.get(
+  "/publico/cedula/:cedula",
+  prestamosController.obtenerPrestamosPorCedula,
+);
+
+// Todas las rutas siguientes requieren autenticación
 router.use(verificarAuth);
 
 // GET /api/prestamos - Listar préstamos

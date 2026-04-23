@@ -30,7 +30,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
   // Verificar que el cliente existe y es tipo 'cliente'
   const { rows: clientes } = await db.query(
     "SELECT id, rol FROM perfiles WHERE id = $1",
-    [cliente_id]
+    [cliente_id],
   );
   const cliente = clientes[0];
 
@@ -51,7 +51,9 @@ const crearPrestamo = asyncHandler(async (req, res) => {
     await client.query("BEGIN");
 
     // Crear préstamo
-    const { rows: [prestamo] } = await client.query(
+    const {
+      rows: [prestamo],
+    } = await client.query(
       `INSERT INTO prestamos (
         cliente_id, monto_principal, tasa_interes_mensual, 
         tasa_mora_diaria, fecha_inicio, fecha_vencimiento, 
@@ -67,7 +69,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         fecha_vencimiento,
         "activo",
         notas || null,
-      ]
+      ],
     );
 
     // Registrar movimiento de entrega de préstamo
@@ -85,13 +87,15 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         0,
         "entrega_prestamo",
         new Date().toISOString(),
-      ]
+      ],
     );
 
     await client.query("COMMIT");
 
     // Obtener el préstamo con la info del cliente para la respuesta
-    const { rows: [prestamoCompleto] } = await db.query(
+    const {
+      rows: [prestamoCompleto],
+    } = await db.query(
       `SELECT p.*, 
         json_build_object(
           'id', pref.id, 
@@ -102,7 +106,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       FROM prestamos p
       JOIN perfiles pref ON p.cliente_id = pref.id
       WHERE p.id = $1`,
-      [prestamo.id]
+      [prestamo.id],
     );
 
     res.status(201).json({
@@ -174,13 +178,14 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
 
   try {
     const { rows: prestamos } = await db.query(queryText, queryParams);
-    const totalCount = prestamos.length > 0 ? parseInt(prestamos[0].total_count) : 0;
+    const totalCount =
+      prestamos.length > 0 ? parseInt(prestamos[0].total_count) : 0;
 
     // Calcular información adicional para cada préstamo
     const prestamosConCalculos = prestamos?.map((p) => {
       // Eliminar total_count del objeto del préstamo
       const { total_count, ...prestamoData } = p;
-      
+
       const diasMora = calcularDiasMora(p.fecha_vencimiento);
       const mesesTranscurridos = calcularMesesTranscurridos(p.fecha_inicio);
       const desglose = calcularDesglosePago({
@@ -231,7 +236,9 @@ const obtenerPrestamo = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Obtener préstamo con cliente
-  const { rows: [prestamo] } = await db.query(
+  const {
+    rows: [prestamo],
+  } = await db.query(
     `SELECT p.*, 
       json_build_object(
         'id', pref.id, 
@@ -242,7 +249,7 @@ const obtenerPrestamo = asyncHandler(async (req, res) => {
     FROM prestamos p
     JOIN perfiles pref ON p.cliente_id = pref.id
     WHERE p.id = $1`,
-    [id]
+    [id],
   );
 
   if (!prestamo) {
@@ -252,24 +259,26 @@ const obtenerPrestamo = asyncHandler(async (req, res) => {
   // Obtener movimientos
   const { rows: movimientos } = await db.query(
     "SELECT * FROM movimientos WHERE prestamo_id = $1",
-    [id]
+    [id],
   );
 
   // Obtener cuotas
   const { rows: cuotas } = await db.query(
     "SELECT * FROM cuotas WHERE prestamo_id = $1",
-    [id]
+    [id],
   );
 
   const prestamoConDetalles = {
     ...prestamo,
     movimientos,
-    cuotas
+    cuotas,
   };
 
   // Calcular información financiera actual
   const diasMora = calcularDiasMora(prestamoConDetalles.fecha_vencimiento);
-  const mesesTranscurridos = calcularMesesTranscurridos(prestamoConDetalles.fecha_inicio);
+  const mesesTranscurridos = calcularMesesTranscurridos(
+    prestamoConDetalles.fecha_inicio,
+  );
   const desglose = calcularDesglosePago({
     montoPrincipal: prestamoConDetalles.monto_principal,
     tasaInteresMensual: prestamoConDetalles.tasa_interes_mensual,
@@ -301,7 +310,8 @@ const obtenerPrestamo = asyncHandler(async (req, res) => {
   const plazoMeses =
     prestamoConDetalles.plazo_meses ||
     Math.ceil(
-      (new Date(prestamoConDetalles.fecha_vencimiento) - new Date(prestamoConDetalles.fecha_inicio)) /
+      (new Date(prestamoConDetalles.fecha_vencimiento) -
+        new Date(prestamoConDetalles.fecha_inicio)) /
         (1000 * 60 * 60 * 24 * 30),
     ) ||
     1;
@@ -356,7 +366,7 @@ const actualizarPrestamo = asyncHandler(async (req, res) => {
   // Verificar que el préstamo existe
   const { rows: existentes } = await db.query(
     "SELECT id, estado FROM prestamos WHERE id = $1",
-    [id]
+    [id],
   );
   const existente = existentes[0];
 
@@ -387,17 +397,23 @@ const actualizarPrestamo = asyncHandler(async (req, res) => {
     throw new AppError("No hay campos para actualizar", 400, "MISSING_FIELDS");
   }
 
-  const setClause = keys.map((key, index) => `${key} = $${index + 1}`).join(", ");
+  const setClause = keys
+    .map((key, index) => `${key} = $${index + 1}`)
+    .join(", ");
   const queryText = `
     UPDATE prestamos 
     SET ${setClause} 
     WHERE id = $${keys.length + 1} 
     RETURNING *`;
-  
-  const { rows: [prestamoUpdated] } = await db.query(queryText, [...Object.values(updates), id]);
+
+  const {
+    rows: [prestamoUpdated],
+  } = await db.query(queryText, [...Object.values(updates), id]);
 
   // Obtener préstamo con cliente para la respuesta
-  const { rows: [prestamo] } = await db.query(
+  const {
+    rows: [prestamo],
+  } = await db.query(
     `SELECT p.*, 
       json_build_object(
         'id', pref.id, 
@@ -407,7 +423,7 @@ const actualizarPrestamo = asyncHandler(async (req, res) => {
     FROM prestamos p
     JOIN perfiles pref ON p.cliente_id = pref.id
     WHERE p.id = $1`,
-    [id]
+    [id],
   );
 
   res.json({
@@ -424,10 +440,9 @@ const actualizarPrestamo = asyncHandler(async (req, res) => {
 const calcularLiquidacion = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const { rows: [prestamo] } = await db.query(
-    "SELECT * FROM prestamos WHERE id = $1",
-    [id]
-  );
+  const {
+    rows: [prestamo],
+  } = await db.query("SELECT * FROM prestamos WHERE id = $1", [id]);
 
   if (!prestamo) {
     throw new AppError("Préstamo no encontrado", 404, "NOT_FOUND");
@@ -444,7 +459,7 @@ const calcularLiquidacion = asyncHandler(async (req, res) => {
   // Obtener movimientos para cálculos
   const { rows: movimientos } = await db.query(
     "SELECT * FROM movimientos WHERE prestamo_id = $1",
-    [id]
+    [id],
   );
 
   // Calcular capital pagado
@@ -529,10 +544,9 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
   } = req.body;
 
   // Verificar préstamo
-  const { rows: [prestamo] } = await db.query(
-    "SELECT * FROM prestamos WHERE id = $1",
-    [id]
-  );
+  const {
+    rows: [prestamo],
+  } = await db.query("SELECT * FROM prestamos WHERE id = $1", [id]);
 
   if (!prestamo) {
     throw new AppError("Préstamo no encontrado", 404, "NOT_FOUND");
@@ -547,7 +561,9 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
     await client.query("BEGIN");
 
     // 1. Registrar el pago como movimiento
-    const { rows: [movimiento] } = await client.query(
+    const {
+      rows: [movimiento],
+    } = await client.query(
       `INSERT INTO movimientos (
         perfil_id, prestamo_id, monto_total, monto_capital, 
         monto_interes, monto_mora, metodo_pago, referencia_pago, 
@@ -567,13 +583,15 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
         "pago_cliente",
         new Date().toISOString(),
         notas,
-      ]
+      ],
     );
 
     // 2. Actualizar estado del préstamo
-    const { rows: [prestamoActualizado] } = await client.query(
+    const {
+      rows: [prestamoActualizado],
+    } = await client.query(
       "UPDATE prestamos SET estado = 'pagado' WHERE id = $1 RETURNING *",
-      [id]
+      [id],
     );
 
     await client.query("COMMIT");
@@ -608,7 +626,7 @@ const eliminarPrestamo = asyncHandler(async (req, res) => {
   // Verificar que no tenga movimientos (excepto el inicial)
   const { rows: movimientos } = await db.query(
     "SELECT id FROM movimientos WHERE prestamo_id = $1",
-    [id]
+    [id],
   );
 
   if (movimientos && movimientos.length > 1) {
@@ -653,7 +671,7 @@ const obtenerPrestamosMora = asyncHandler(async (req, res) => {
     JOIN perfiles pref ON p.cliente_id = pref.id
     WHERE p.fecha_vencimiento < $1 AND p.estado = 'activo'
     ORDER BY p.fecha_vencimiento ASC`,
-    [hoy]
+    [hoy],
   );
 
   // Calcular mora para cada uno
@@ -686,6 +704,52 @@ const obtenerPrestamosMora = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Consultar préstamos por cédula (público, sin autenticación)
+ * GET /api/prestamos/publico/cedula/:cedula
+ */
+const obtenerPrestamosPorCedula = asyncHandler(async (req, res) => {
+  const { cedula } = req.params;
+
+  // Buscar perfil por cédula
+  const { data: perfil, error: perfilError } = await db
+    .from("perfiles")
+    .select("id, nombre_completo, telefono")
+    .eq("identificacion", cedula)
+    .single();
+
+  if (perfilError || !perfil) {
+    throw new AppError(
+      "No se encontró ningún perfil con esa cédula",
+      404,
+      "NOT_FOUND",
+    );
+  }
+
+  // Buscar préstamos del cliente
+  const { data: prestamos, error: prestamosError } = await db
+    .from("prestamos")
+    .select("*")
+    .eq("cliente_id", perfil.id)
+    .order("fecha_inicio", { ascending: false });
+
+  if (prestamosError) {
+    throw new AppError("Error al buscar préstamos", 500, "DB_ERROR");
+  }
+
+  res.json({
+    success: true,
+    data: {
+      perfil: {
+        nombre: perfil.nombre_completo,
+        telefono: perfil.telefono,
+      },
+      prestamos: prestamos || [],
+      total: prestamos?.length || 0,
+    },
+  });
+});
+
 module.exports = {
   crearPrestamo,
   obtenerPrestamos,
@@ -695,4 +759,5 @@ module.exports = {
   eliminarPrestamo,
   obtenerPrestamosMora,
   calcularLiquidacion,
+  obtenerPrestamosPorCedula,
 };
