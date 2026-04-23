@@ -5,6 +5,7 @@ const db = require("../config/db");
 const { generateToken } = require("../config/jwt");
 const { AppError } = require("../middleware/errorHandler");
 const { sanitizarString } = require("../utils/formatters");
+const { verificarAuth } = require("../middleware/auth");
 
 /**
  * POST /api/auth/login
@@ -318,6 +319,126 @@ router.get("/me", async (req, res, next) => {
       data: {
         user: perfil,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/auth/change-password
+ * Cambiar contraseña del usuario actual
+ */
+router.put("/change-password", verificarAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError(
+        "Contraseña actual y nueva son requeridas",
+        400,
+        "MISSING_PASSWORDS",
+      );
+    }
+
+    if (newPassword.length < 6) {
+      throw new AppError(
+        "La nueva contraseña debe tener al menos 6 caracteres",
+        400,
+        "PASSWORD_TOO_SHORT",
+      );
+    }
+
+    // Obtener usuario actual
+    const { rows: users } = await db.query(
+      "SELECT * FROM users WHERE id = $1",
+      [req.user.id],
+    );
+    const user = users[0];
+
+    if (!user) {
+      throw new AppError("Usuario no encontrado", 404, "USER_NOT_FOUND");
+    }
+
+    // Verificar contraseña actual
+    const passwordValid = await bcrypt.compare(currentPassword, user.password);
+
+    if (!passwordValid) {
+      throw new AppError(
+        "Contraseña actual incorrecta",
+        401,
+        "INVALID_PASSWORD",
+      );
+    }
+
+    // Generar hash de nueva contraseña
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    // Actualizar contraseña
+    await db.query(
+      "UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2",
+      [newPasswordHash, req.user.id],
+    );
+
+    res.json({
+      success: true,
+      message: "Contraseña actualizada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/auth/create-admin
+ * Crear nuevo usuario administrativo (solo rol admin puede crear otros admins)
+ */
+router.post("/create-admin", verificarAuth, async (req, res, next) => {
+  try {
+    const { email, password, nombre } = req.body;
+
+    if (!email || !password || !nombre) {
+      throw new AppError(
+        "Email, contraseña y nombre son requeridos",
+        400,
+        "MISSING_FIELDS",
+      );
+    }
+
+    // Verificar que el usuario actual es admin
+    if (req.user.rol !== "admin") {
+      throw new AppError(
+        "Solo administradores pueden crear usuarios administrativos",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    // Verificar que el email no exista
+    const { rows: existingUsers } = await db.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email],
+    );
+
+    if (existingUsers.length > 0) {
+      throw new AppError("El email ya está en uso", 400, "EMAIL_EXISTS");
+    }
+
+    // Generar hash de contraseña
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Crear usuario administrativo
+    const { rows: newUsers } = await db.query(
+      "INSERT INTO users (email, password, rol, created_at) VALUES ($1, $2, 'admin', NOW()) RETURNING id, email, rol, created_at",
+      [email, passwordHash],
+    );
+
+    res.json({
+      success: true,
+      message: "Usuario administrativo creado exitosamente",
+      data: newUsers[0],
     });
   } catch (error) {
     next(error);
