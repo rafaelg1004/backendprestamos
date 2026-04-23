@@ -8,35 +8,24 @@ const { sanitizarString } = require("../utils/formatters");
 
 /**
  * POST /api/auth/login
- * Iniciar sesión con identificación (cédula) y password usando JWT
+ * Iniciar sesión con email y password (solo usuarios con rol 'admin')
  */
 router.post("/login", async (req, res, next) => {
   try {
-    const { identificacion, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!identificacion || !password) {
+    if (!email || !password) {
       throw new AppError(
-        "Identificación y contraseña son requeridos",
+        "Email y contraseña son requeridos",
         400,
         "MISSING_CREDENTIALS",
       );
     }
 
-    // Buscar perfil por identificación
-    const { rows: perfiles } = await db.query(
-      "SELECT * FROM perfiles WHERE identificacion = $1",
-      [identificacion],
-    );
-    const perfil = perfiles[0];
-
-    if (!perfil) {
-      throw new AppError("Credenciales inválidas", 401, "INVALID_CREDENTIALS");
-    }
-
-    // Buscar usuario asociado al perfil
+    // Buscar usuario por email
     const { rows: users } = await db.query(
-      "SELECT * FROM users WHERE id = $1",
-      [perfil.user_id],
+      "SELECT * FROM users WHERE email = $1",
+      [email],
     );
     const user = users[0];
 
@@ -51,16 +40,32 @@ router.post("/login", async (req, res, next) => {
       throw new AppError("Credenciales inválidas", 401, "INVALID_CREDENTIALS");
     }
 
-    // Actualizar last_sign_in_at
+    // Verificar que el usuario tenga rol 'admin'
+    if (user.rol !== "admin") {
+      throw new AppError(
+        "Solo usuarios administrativos pueden iniciar sesión",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    // Actualizar último acceso
     await db.query("UPDATE users SET last_sign_in_at = NOW() WHERE id = $1", [
       user.id,
     ]);
+
+    // Buscar perfil asociado si existe
+    const { rows: perfiles } = await db.query(
+      "SELECT * FROM perfiles WHERE user_id = $1",
+      [user.id],
+    );
+    const perfil = perfiles[0];
 
     // Generar token JWT
     const token = generateToken({
       id: user.id,
       email: user.email,
-      rol: perfil?.rol,
+      rol: user.rol,
     });
 
     res.json({
@@ -70,9 +75,8 @@ router.post("/login", async (req, res, next) => {
         user: {
           id: user.id,
           email: user.email,
-          nombre_completo: perfil?.nombre_completo,
-          rol: perfil?.rol,
-          identificacion: perfil?.identificacion,
+          rol: user.rol,
+          nombre: perfil?.nombre_completo || user.email.split("@")[0],
         },
       },
     });
