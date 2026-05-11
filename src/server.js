@@ -25,8 +25,12 @@ const movimientosRoutes = require("./routes/movimientos");
 const dashboardRoutes = require("./routes/dashboard");
 const cuentasRoutes = require("./routes/cuentas");
 
+const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Servir archivos estáticos (Documentos de préstamos)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Middleware
 app.use(helmet()); // Seguridad

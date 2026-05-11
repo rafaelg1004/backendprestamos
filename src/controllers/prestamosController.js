@@ -1,4 +1,6 @@
 const db = require("../config/db");
+const fs = require("fs");
+const path = require("path");
 const { asyncHandler, AppError } = require("../middleware/errorHandler");
 const {
   calcularDiasMora,
@@ -788,6 +790,84 @@ const obtenerPrestamosPorCedula = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Subir un documento para un préstamo
+ * POST /api/prestamos/:id/documentos
+ */
+const subirDocumento = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { tipo_documento } = req.body;
+  const file = req.file;
+
+  if (!file) {
+    throw new AppError("No se subió ningún archivo", 400);
+  }
+
+  const { rows: [doc] } = await db.query(
+    `INSERT INTO prestamo_documentos (prestamo_id, nombre_archivo, ruta_archivo, tipo_documento)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [id, file.originalname, file.filename, tipo_documento || 'otro']
+  );
+
+  res.status(201).json({
+    success: true,
+    data: doc,
+    message: "Documento subido exitosamente"
+  });
+});
+
+/**
+ * Obtener todos los documentos de un préstamo
+ * GET /api/prestamos/:id/documentos
+ */
+const obtenerDocumentos = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { rows: documentos } = await db.query(
+    "SELECT * FROM prestamo_documentos WHERE prestamo_id = $1 ORDER BY fecha_subida DESC",
+    [id]
+  );
+
+  res.json({
+    success: true,
+    data: documentos || []
+  });
+});
+
+/**
+ * Eliminar un documento específico
+ * DELETE /api/prestamos/documentos/:docId
+ */
+const eliminarDocumento = asyncHandler(async (req, res) => {
+  const { docId } = req.params;
+
+  // Obtener info del archivo antes de borrar
+  const { rows: [doc] } = await db.query(
+    "SELECT * FROM prestamo_documentos WHERE id = $1",
+    [docId]
+  );
+
+  if (!doc) {
+    throw new AppError("Documento no encontrado", 404);
+  }
+
+  // Borrar de la base de datos
+  await db.query("DELETE FROM prestamo_documentos WHERE id = $1", [docId]);
+
+  // Borrar el archivo físico
+  const uploadDir = process.env.UPLOAD_DIR || 'uploads/documentos';
+  const filePath = path.join(process.cwd(), uploadDir, doc.ruta_archivo);
+  
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+
+  res.json({
+    success: true,
+    message: "Documento eliminado exitosamente"
+  });
+});
+
 module.exports = {
   crearPrestamo,
   obtenerPrestamos,
@@ -798,4 +878,7 @@ module.exports = {
   obtenerPrestamosMora,
   calcularLiquidacion,
   obtenerPrestamosPorCedula,
+  subirDocumento,
+  obtenerDocumentos,
+  eliminarDocumento,
 };

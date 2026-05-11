@@ -32,6 +32,7 @@ const validaciones = {
   email: (campo = "email", ubicacion = "body") => {
     const validator = ubicacion === "body" ? body(campo) : param(campo);
     return validator
+      .optional({ checkFalsy: true })
       .isEmail()
       .normalizeEmail()
       .withMessage("El email no es válido");

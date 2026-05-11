@@ -7,6 +7,7 @@ const {
   body,
 } = require("../middleware/validate");
 const { verificarAuth } = require("../middleware/auth");
+const upload = require("../middleware/upload");
 
 // Ruta pública para consultar préstamos por cédula (sin autenticación)
 router.get(
@@ -76,6 +77,29 @@ router.delete(
   "/:id",
   [validaciones.uuid("id"), handleValidationErrors],
   prestamosController.eliminarPrestamo,
+);
+
+// --- RUTAS DE DOCUMENTOS ---
+
+// POST /api/prestamos/:id/documentos - Subir documento
+router.post(
+  "/:id/documentos",
+  [validaciones.uuid("id"), handleValidationErrors],
+  upload.single('archivo'),
+  prestamosController.subirDocumento
+);
+
+// GET /api/prestamos/:id/documentos - Listar documentos de un préstamo
+router.get(
+  "/:id/documentos",
+  [validaciones.uuid("id"), handleValidationErrors],
+  prestamosController.obtenerDocumentos
+);
+
+// DELETE /api/prestamos/documentos/:docId - Eliminar un documento específico
+router.delete(
+  "/documentos/:docId",
+  prestamosController.eliminarDocumento
 );
 
 module.exports = router;

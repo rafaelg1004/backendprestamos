@@ -28,18 +28,20 @@ const crearPerfil = asyncHandler(async (req, res) => {
     }
   }
 
-  // Verificar si el email ya existe en perfiles
-  const { rows: existentesPerfiles } = await db.query(
-    "SELECT id FROM perfiles WHERE email = $1",
-    [email.toLowerCase()],
-  );
-
-  if (existentesPerfiles.length > 0) {
-    throw new AppError(
-      `El email ya está registrado en perfiles`,
-      400,
-      "EMAIL_EXISTS",
+  // Verificar si el email ya existe en perfiles (solo si se proporciona)
+  if (email) {
+    const { rows: existentesPerfiles } = await db.query(
+      "SELECT id FROM perfiles WHERE email = $1",
+      [email.toLowerCase()],
     );
+
+    if (existentesPerfiles.length > 0) {
+      throw new AppError(
+        `El email ya está registrado en perfiles`,
+        400,
+        "EMAIL_EXISTS",
+      );
+    }
   }
 
   // Generar UUID para el perfil
@@ -57,7 +59,7 @@ const crearPerfil = asyncHandler(async (req, res) => {
       perfilId,
       null, // user_id = null (sin acceso al sistema)
       sanitizarString(nombre_completo),
-      email.toLowerCase(),
+      email ? email.toLowerCase() : null,
       rol,
       telefono || null,
       identificacion || null,
@@ -192,11 +194,11 @@ const actualizarPerfil = asyncHandler(async (req, res) => {
   if (telefono !== undefined) updates.telefono = telefono;
   if (identificacion !== undefined) updates.identificacion = identificacion;
   if (direccion !== undefined) updates.direccion = direccion;
-  if (email) {
-    if (!esEmailValido(email)) {
+  if (email !== undefined) {
+    if (email && !esEmailValido(email)) {
       throw new AppError("Email no válido", 400, "INVALID_EMAIL");
     }
-    updates.email = email.toLowerCase();
+    updates.email = email ? email.toLowerCase() : null;
   }
 
   const keys = Object.keys(updates);
