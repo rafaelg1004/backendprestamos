@@ -30,7 +30,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Servir archivos estáticos (Documentos de préstamos)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Middleware
 app.use(helmet()); // Seguridad
