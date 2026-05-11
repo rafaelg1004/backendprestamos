@@ -791,6 +791,48 @@ const obtenerPrestamosPorCedula = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Middleware para organizar archivos en carpetas por cliente y fecha
+ */
+const prepararCarpetaPrestamo = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  const { rows: [p] } = await db.query(
+    `SELECT pref.nombre_completo, p.fecha_inicio 
+     FROM prestamos p 
+     JOIN perfiles pref ON p.cliente_id = pref.id 
+     WHERE p.id = $1`,
+    [id]
+  );
+
+  if (!p) {
+    throw new AppError("Préstamo no encontrado", 404);
+  }
+
+  // Generar nombre de carpeta: NombrePersona_YYYY-MM-DD
+  const nombreLimpio = p.nombre_completo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+    .replace(/[^a-zA-Z0-9]/g, "_")  // Solo letras, números y guiones bajos
+    .substring(0, 30); // Limitar longitud
+  
+  const fechaObj = p.fecha_inicio instanceof Date 
+    ? p.fecha_inicio 
+    : new Date(p.fecha_inicio);
+
+  const año = fechaObj.getFullYear();
+  const mes = fechaObj.getMonth(); // 0-11
+  const semestre = mes < 6 ? 'Semestre_1' : 'Semestre_2';
+  const fechaStr = fechaObj.toISOString().split('T')[0];
+
+  req.uploadSubFolder = path.join(
+    String(año),
+    semestre,
+    `${nombreLimpio}_${fechaStr}`
+  );
+  next();
+});
+
+/**
  * Subir un documento para un préstamo
  * POST /api/prestamos/:id/documentos
  */
@@ -800,19 +842,24 @@ const subirDocumento = asyncHandler(async (req, res) => {
   const file = req.file;
 
   if (!file) {
-    throw new AppError("No se subió ningún archivo", 400);
+    throw new AppError("No se recibió ningún archivo", 400);
   }
+
+  // Guardamos la ruta relativa incluyendo la subcarpeta si existe
+  const rutaFinal = req.uploadSubFolder 
+    ? path.join(req.uploadSubFolder, file.filename)
+    : file.filename;
 
   const { rows: [doc] } = await db.query(
     `INSERT INTO prestamo_documentos (prestamo_id, nombre_archivo, ruta_archivo, tipo_documento)
      VALUES ($1, $2, $3, $4) RETURNING *`,
-    [id, file.originalname, file.filename, tipo_documento || 'otro']
+    [id, file.originalname, rutaFinal, tipo_documento || 'otro']
   );
 
   res.status(201).json({
     success: true,
     data: doc,
-    message: "Documento subido exitosamente"
+    message: "Documento subido y organizado correctamente"
   });
 });
 
@@ -879,6 +926,7 @@ module.exports = {
   calcularLiquidacion,
   obtenerPrestamosPorCedula,
   subirDocumento,
+  prepararCarpetaPrestamo,
   obtenerDocumentos,
   eliminarDocumento,
 };

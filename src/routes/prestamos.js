@@ -85,6 +85,7 @@ router.delete(
 router.post(
   "/:id/documentos",
   [validaciones.uuid("id"), handleValidationErrors],
+  prestamosController.prepararCarpetaPrestamo,
   upload.single('archivo'),
   prestamosController.subirDocumento
 );

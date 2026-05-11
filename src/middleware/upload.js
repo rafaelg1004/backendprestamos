@@ -5,18 +5,24 @@ const fs = require('fs');
 // Configurar almacenamiento
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = process.env.UPLOAD_DIR || 'uploads/documentos';
-    // Asegurarse de que la carpeta existe
+    let uploadDir = process.env.UPLOAD_DIR || 'uploads/documentos';
+    
+    // Si el middleware previo definió una subcarpeta (ej: Nombre_Fecha), la usamos
+    if (req.uploadSubFolder) {
+      uploadDir = path.join(uploadDir, req.uploadSubFolder);
+    }
+
+    // Asegurarse de que la carpeta existe (recursivamente)
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    // Nombre: prestamoId-timestamp-nombreOriginal
-    const prestamoId = req.params.id || 'temp';
+    // Nombre: timestamp-nombreOriginal (limpio)
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${prestamoId}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    const originalName = file.originalname.replace(/\s+/g, '_');
+    cb(null, `${uniqueSuffix}-${originalName}`);
   }
 });
 
