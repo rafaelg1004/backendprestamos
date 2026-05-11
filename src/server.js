@@ -23,6 +23,7 @@ const prestamosRoutes = require("./routes/prestamos");
 const inversionesRoutes = require("./routes/inversiones");
 const movimientosRoutes = require("./routes/movimientos");
 const dashboardRoutes = require("./routes/dashboard");
+const cuentasRoutes = require("./routes/cuentas");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -72,6 +73,7 @@ app.use("/api/prestamos", prestamosRoutes);
 app.use("/api/inversiones", inversionesRoutes);
 app.use("/api/movimientos", movimientosRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/cuentas", cuentasRoutes);
 
 // Ruta base
 app.get("/", (req, res) => {
@@ -86,6 +88,7 @@ app.get("/", (req, res) => {
       inversiones: "/api/inversiones",
       movimientos: "/api/movimientos",
       dashboard: "/api/dashboard",
+      cuentas: "/api/cuentas",
     },
     documentation: "Consulta el README.md para más información",
   });

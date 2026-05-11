@@ -11,7 +11,17 @@ const {
  * POST /api/inversiones
  */
 const crearInversion = asyncHandler(async (req, res) => {
-  const { inversionista_id, monto_invertido, tasa_interes_pactada, notas } = req.body;
+  const {
+    inversionista_id,
+    monto_invertido,
+    tasa_interes_pactada,
+    cuenta_id,
+    notas,
+  } = req.body;
+
+  if (!cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta para recibir la inversión", 400);
+  }
 
   // Verificar que el inversionista existe y es tipo 'inversionista'
   const { rows: perfiles } = await db.query(
@@ -34,16 +44,22 @@ const crearInversion = asyncHandler(async (req, res) => {
 
     // Crear inversión
     const { rows: [inversionRes] } = await client.query(
-      `INSERT INTO inversiones (inversionista_id, monto_invertido, tasa_interes_pactada, estado, notas) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [inversionista_id, monto_invertido, tasa_interes_pactada, "activo", notas || null]
+      `INSERT INTO inversiones (inversionista_id, monto_invertido, tasa_interes_pactada, estado, cuenta_id, notas) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [inversionista_id, monto_invertido, tasa_interes_pactada, "activo", cuenta_id, notas || null]
     );
 
     // Registrar movimiento de recibo de inversión
     await client.query(
-      `INSERT INTO movimientos (perfil_id, inversion_id, monto_total, monto_capital, monto_interes, tipo, fecha_operacion) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [inversionista_id, inversionRes.id, monto_invertido, monto_invertido, 0, "recibo_inversion", new Date().toISOString()]
+      `INSERT INTO movimientos (perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, monto_interes, tipo, fecha_operacion) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [inversionista_id, inversionRes.id, cuenta_id, monto_invertido, monto_invertido, 0, "recibo_inversion", new Date().toISOString()]
+    );
+
+    // Actualizar saldo de la cuenta
+    await client.query(
+      "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2",
+      [monto_invertido, cuenta_id]
     );
 
     await client.query("COMMIT");
@@ -257,8 +273,12 @@ const devolverInversion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const {
     monto_total, monto_capital, monto_interes, metodo_pago,
-    referencia_pago, url_captura, notas,
+    referencia_pago, url_captura, cuenta_id, notas,
   } = req.body;
+
+  if (!cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta de la cual sale el dinero", 400);
+  }
 
   // Verificar inversión
   const { rows: inversiones } = await db.query(
@@ -286,13 +306,19 @@ const devolverInversion = asyncHandler(async (req, res) => {
     // 1. Registrar la devolución como movimiento
     const { rows: [movimiento] } = await client.query(
       `INSERT INTO movimientos (
-        perfil_id, inversion_id, monto_total, monto_capital, monto_interes, 
+        perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, monto_interes, 
         metodo_pago, referencia_pago, url_captura, tipo, fecha_operacion, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
-        inversion.inversionista_id, id, monto_total, monto_capital || 0, monto_interes || 0,
+        inversion.inversionista_id, id, cuenta_id, monto_total, monto_capital || 0, monto_interes || 0,
         metodo_pago, referencia_pago, url_captura, "devolucion_inversion", new Date().toISOString(), notas
       ]
+    );
+
+    // 2. Actualizar saldo de la cuenta (salida de dinero)
+    await client.query(
+      "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
+      [monto_total, cuenta_id]
     );
 
     // 2. Verificar si ya se devolvió todo para marcar como finalizada

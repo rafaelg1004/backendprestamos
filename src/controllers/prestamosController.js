@@ -24,8 +24,18 @@ const crearPrestamo = asyncHandler(async (req, res) => {
     tasa_mora_diaria,
     fecha_inicio,
     fecha_vencimiento,
+    cuenta_id,
+    fondos, // [{ inversion_id, monto }]
     notas,
   } = req.body;
+
+  if (!cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta de la cual sale el dinero", 400);
+  }
+
+  if (!fondos || !Array.isArray(fondos) || fondos.length === 0) {
+    throw new AppError("Debes especificar el origen de los fondos (inversionistas)", 400);
+  }
 
   // Verificar que el cliente existe y es tipo 'cliente'
   const { rows: clientes } = await db.query(
@@ -57,8 +67,8 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       `INSERT INTO prestamos (
         cliente_id, monto_principal, tasa_interes_mensual, 
         tasa_mora_diaria, fecha_inicio, fecha_vencimiento, 
-        estado, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+        estado, cuenta_id, notas
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
       RETURNING *`,
       [
         cliente_id,
@@ -68,19 +78,35 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         fecha_inicio,
         fecha_vencimiento,
         "activo",
+        cuenta_id,
         notas || null,
       ],
+    );
+
+    // Registrar fondos (trazabilidad)
+    for (const fondo of fondos) {
+      await client.query(
+        "INSERT INTO prestamo_fondos (prestamo_id, inversion_id, monto_aportado) VALUES ($1, $2, $3)",
+        [prestamo.id, fondo.inversion_id, fondo.monto]
+      );
+    }
+
+    // Actualizar saldo de la cuenta (salida de dinero)
+    await client.query(
+      "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
+      [monto_principal, cuenta_id]
     );
 
     // Registrar movimiento de entrega de préstamo
     await client.query(
       `INSERT INTO movimientos (
-        perfil_id, prestamo_id, monto_total, monto_capital, 
+        perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
         monto_interes, monto_mora, tipo, fecha_operacion
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         cliente_id,
         prestamo.id,
+        cuenta_id,
         monto_principal,
         monto_principal,
         0,
@@ -540,8 +566,13 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
     metodo_pago,
     referencia_pago,
     url_captura,
+    cuenta_id,
     notas,
   } = req.body;
+
+  if (!cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta para recibir el pago", 400);
+  }
 
   // Verificar préstamo
   const {
@@ -565,14 +596,15 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
       rows: [movimiento],
     } = await client.query(
       `INSERT INTO movimientos (
-        perfil_id, prestamo_id, monto_total, monto_capital, 
+        perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
         monto_interes, monto_mora, metodo_pago, referencia_pago, 
         url_captura, tipo, fecha_operacion, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
       RETURNING *`,
       [
         prestamo.cliente_id,
         id,
+        cuenta_id,
         monto_total,
         monto_capital || 0,
         monto_interes || 0,
@@ -584,6 +616,12 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
         new Date().toISOString(),
         notas,
       ],
+    );
+
+    // 2. Actualizar saldo de la cuenta (entrada de dinero)
+    await client.query(
+      "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2",
+      [monto_total, cuenta_id]
     );
 
     // 2. Actualizar estado del préstamo
