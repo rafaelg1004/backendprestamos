@@ -195,9 +195,23 @@ const obtenerMovimientos = asyncHandler(async (req, res) => {
   const offset = (page - 1) * limit;
   let queryText = `
     SELECT m.*, 
-      json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'email', p.email) as perfil,
-      json_build_object('id', pr.id, 'estado', pr.estado) as prestamo,
-      json_build_object('id', inv.id, 'estado', inv.estado) as inversion,
+      json_build_object(
+        'id', p.id, 
+        'nombre_completo', p.nombre_completo, 
+        'identificacion', p.identificacion,
+        'email', p.email
+      ) as perfil,
+      json_build_object(
+        'id', pr.id, 
+        'monto_principal', pr.monto_principal,
+        'estado', pr.estado,
+        'fecha_inicio', pr.fecha_inicio
+      ) as prestamo,
+      json_build_object(
+        'id', inv.id, 
+        'monto_invertido', inv.monto_invertido,
+        'estado', inv.estado
+      ) as inversion,
       COUNT(*) OVER() as total_count
     FROM movimientos m
     JOIN perfiles p ON m.perfil_id = p.id
