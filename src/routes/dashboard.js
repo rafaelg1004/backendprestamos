@@ -30,4 +30,7 @@ router.get(
   dashboardController.obtenerMovimientosRecientes,
 );
 
+// GET /api/dashboard/flujo-caja-historico - Flujo de caja histórico para gráficos
+router.get("/flujo-caja-historico", dashboardController.obtenerFlujoCajaHistorico);
+
 module.exports = router;

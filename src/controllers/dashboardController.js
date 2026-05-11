@@ -600,10 +600,46 @@ const obtenerDetalleInversionistas = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Obtener flujo de caja histórico (últimos 6 meses) para gráficos
+ * GET /api/dashboard/flujo-caja-historico
+ */
+const obtenerFlujoCajaHistorico = asyncHandler(async (req, res) => {
+  const { rows: flujo } = await db.query(`
+    WITH meses AS (
+      SELECT generate_series(
+        date_trunc('month', CURRENT_DATE) - interval '5 months',
+        date_trunc('month', CURRENT_DATE),
+        '1 month'::interval
+      ) AS mes
+    )
+    SELECT 
+      to_char(m.mes, 'Mon YYYY') as nombre_mes,
+      m.mes as fecha_mes,
+      COALESCE(SUM(CASE WHEN mov.tipo IN ('recibo_inversion', 'pago_cliente') THEN mov.monto_total ELSE 0 END), 0) as entradas,
+      COALESCE(SUM(CASE WHEN mov.tipo IN ('entrega_prestamo', 'devolucion_inversion') THEN mov.monto_total ELSE 0 END), 0) as salidas
+    FROM meses m
+    LEFT JOIN movimientos mov ON date_trunc('month', mov.fecha_operacion) = m.mes
+    GROUP BY m.mes
+    ORDER BY m.mes ASC
+  `);
+
+  res.json({
+    success: true,
+    data: flujo.map((f) => ({
+      ...f,
+      entradas: Math.round(parseFloat(f.entradas)),
+      salidas: Math.round(parseFloat(f.salidas)),
+      neto: Math.round(parseFloat(f.entradas) - parseFloat(f.salidas)),
+    })),
+  });
+});
+
 module.exports = {
   obtenerResumen,
   obtenerAlertasVencimientos,
   obtenerMovimientosRecientes,
   obtenerDetalleClientes,
   obtenerDetalleInversionistas,
+  obtenerFlujoCajaHistorico,
 };

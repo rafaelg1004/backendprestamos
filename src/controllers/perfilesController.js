@@ -1,6 +1,6 @@
 const db = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { asyncHandler, AppError } = require("../middleware/errorHandler");
 const { sanitizarString, esEmailValido } = require("../utils/formatters");
 
