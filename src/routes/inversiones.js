@@ -36,17 +36,17 @@ router.put(
   inversionesController.actualizarInversion
 );
 
-// POST /api/inversiones/:id/devolver - Registrar devolución de inversión
+// POST /api/inversiones/:id/pagar - Registrar pago a inversionista (Interés/Capital)
 router.post(
-  '/:id/devolver',
+  '/:id/pagar',
   [
     validaciones.uuid('id'),
     validaciones.montoPositivo('monto_total'),
-    validaciones.metodoPago(),
     handleValidationErrors
   ],
-  inversionesController.devolverInversion
+  inversionesController.registrarPagoInversionista
 );
+
 
 // DELETE /api/inversiones/:id - Eliminar inversión
 router.delete(
