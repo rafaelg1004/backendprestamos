@@ -327,13 +327,12 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
     );
   }
 
-  // Fallback: Calcular manualmente
+  // Fallback: Calcular manualmente con más detalle y rango de 15 días
   const hoy = new Date();
-  const en7Dias = new Date();
-  en7Dias.setDate(hoy.getDate() + 7);
+  const en15Dias = new Date();
+  en15Dias.setDate(hoy.getDate() + 15);
 
-  const hoyStr = hoy.toISOString().split("T")[0];
-  const en7DiasStr = en7Dias.toISOString().split("T")[0];
+  const en15DiasStr = en15Dias.toISOString().split("T")[0];
 
   const { rows: prestamos } = await db.query(
     `SELECT p.*, 
@@ -345,33 +344,52 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
       ) as cliente
     FROM prestamos p
     JOIN perfiles pref ON p.cliente_id = pref.id
-    WHERE p.estado = 'activo' AND (p.fecha_vencimiento <= $1 OR p.fecha_vencimiento <= $2)
+    WHERE p.estado = 'activo' AND p.fecha_vencimiento <= $1
     ORDER BY p.fecha_vencimiento ASC`,
-    [en7DiasStr, hoyStr],
+    [en15DiasStr],
   );
 
-  const alertas = prestamos?.map((p) => ({
-    ...p,
-    dias_restantes: Math.ceil(
-      (new Date(p.fecha_vencimiento) - hoy) / (1000 * 60 * 60 * 24),
-    ),
-    nivel_alerta:
-      Math.ceil(
-        (new Date(p.fecha_vencimiento) - hoy) / (1000 * 60 * 60 * 24),
-      ) <= 0
-        ? "vencido"
-        : Math.ceil(
-              (new Date(p.fecha_vencimiento) - hoy) / (1000 * 60 * 60 * 24),
-            ) <= 3
-          ? "critico"
-          : "proximo",
+  const alertas = await Promise.all((prestamos || []).map(async (p) => {
+    const diasRestantes = Math.ceil((new Date(p.fecha_vencimiento) - hoy) / (1000 * 60 * 60 * 24));
+    
+    // Obtener pagos realizados para calcular saldo real
+    const { rows: movs } = await db.query(
+      "SELECT monto_capital, monto_interes FROM movimientos WHERE prestamo_id = $1 AND tipo = 'pago_cliente'",
+      [p.id]
+    );
+    
+    const capPagado = movs.reduce((sum, m) => sum + (parseFloat(m.monto_capital) || 0), 0);
+    const intPagado = movs.reduce((sum, m) => sum + (parseFloat(m.monto_interes) || 0), 0);
+    
+    const meses = calcularMesesTranscurridos(p.fecha_inicio);
+    const desglose = calcularDesglosePago({
+      montoPrincipal: parseFloat(p.monto_principal),
+      tasaInteresMensual: p.tasa_interes_mensual,
+      mesesTranscurridos: meses,
+      tasaMoraDiaria: p.tasa_mora_diaria,
+      diasMora: diasRestantes < 0 ? Math.abs(diasRestantes) : 0,
+    });
+
+    return {
+      ...p,
+      dias_restantes: diasRestantes,
+      monto_capital_pendiente: parseFloat(p.monto_principal) - capPagado,
+      monto_interes_pendiente: Math.max(0, desglose.interes - intPagado),
+      monto_total_cobrar: (parseFloat(p.monto_principal) - capPagado) + Math.max(0, desglose.interes - intPagado) + desglose.mora,
+      nivel_alerta:
+        diasRestantes <= 0
+          ? "vencido"
+          : diasRestantes <= 3
+            ? "urgente"
+            : "proximo",
+    };
   }));
 
   res.json({
     success: true,
-    data: alertas || [],
-    total: alertas?.length || 0,
-    _meta: { fuente: "calculo_manual" },
+    data: alertas,
+    total: alertas.length,
+    _meta: { fuente: "calculo_manual_detallado" },
   });
 });
 
