@@ -29,6 +29,9 @@ const crearPrestamo = asyncHandler(async (req, res) => {
     cuenta_id,
     fondos, // [{ inversion_id, monto }]
     notas,
+    plazo_meses,
+    frecuencia_pago,
+    tipo_amortizacion,
   } = req.body;
 
   if (!cuenta_id) {
@@ -69,8 +72,8 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       `INSERT INTO prestamos (
         cliente_id, monto_principal, tasa_interes_mensual, 
         tasa_mora_diaria, fecha_inicio, fecha_vencimiento, 
-        estado, cuenta_id, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+        estado, cuenta_id, notas, plazo_meses, frecuencia_pago, tipo_amortizacion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
       RETURNING *`,
       [
         cliente_id,
@@ -82,8 +85,50 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         "activo",
         cuenta_id,
         notas || null,
+        plazo_meses || 1,
+        frecuencia_pago || 'mensual',
+        tipo_amortizacion || 'final'
       ],
     );
+
+    // Generar cuotas si el tipo no es 'final' o si tiene más de 1 plazo
+    if (tipo_amortizacion !== 'final' && plazo_meses > 0) {
+      const tabla = generarTablaAmortizacion(
+        monto_principal,
+        tasa_interes_mensual,
+        plazo_meses,
+        tipo_amortizacion,
+        frecuencia_pago
+      );
+
+      for (const item of tabla) {
+        // Calcular fecha de vencimiento de la cuota
+        const fechaCuota = new Date(fecha_inicio);
+        if (frecuencia_pago === 'semanal') {
+          fechaCuota.setDate(fechaCuota.getDate() + (item.mes * 7));
+        } else if (frecuencia_pago === 'quincenal') {
+          fechaCuota.setDate(fechaCuota.getDate() + (item.mes * 15));
+        } else {
+          fechaCuota.setMonth(fechaCuota.getMonth() + item.mes);
+        }
+
+        await client.query(
+          `INSERT INTO cuotas (
+            prestamo_id, numero_cuota, fecha_vencimiento, 
+            capital, interes, total_cuota, estado
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            prestamo.id,
+            item.mes,
+            fechaCuota.toISOString().split('T')[0],
+            item.capital,
+            item.interes,
+            item.cuota,
+            'pendiente'
+          ]
+        );
+      }
+    }
 
     // Registrar fondos (trazabilidad)
     for (const fondo of fondos) {

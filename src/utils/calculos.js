@@ -62,7 +62,8 @@ function calcularCuotaMensual(montoPrincipal, tasaInteresMensual, meses) {
   const cuota =
     (montoPrincipal * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
 
-  return Math.round(cuota);
+  // Redondeo al millar más cercano (ej: 562.964 -> 563.000)
+  return Math.round(cuota / 1000) * 1000;
 }
 
 /**
@@ -70,26 +71,83 @@ function calcularCuotaMensual(montoPrincipal, tasaInteresMensual, meses) {
  * @param {number} montoPrincipal - Capital en milunidades
  * @param {number} tasaInteresMensual - Tasa mensual en porcentaje
  * @param {number} meses - Plazo en meses
+ * @param {string} tipo - 'frances' o 'flat'
  * @returns {Array} Array con desglose de cada cuota
  */
-function generarTablaAmortizacion(montoPrincipal, tasaInteresMensual, meses) {
-  const cuota = calcularCuotaMensual(montoPrincipal, tasaInteresMensual, meses);
-  const i = tasaInteresMensual / 100;
-  let saldo = montoPrincipal;
+function generarTablaAmortizacion(
+  montoPrincipal,
+  tasaInteresMensual,
+  plazo,
+  tipo = "frances",
+  frecuencia = "mensual"
+) {
+  const tasaMensual = tasaInteresMensual / 100;
   const tabla = [];
 
-  for (let mes = 1; mes <= meses; mes++) {
-    const interes = Math.round(saldo * i);
-    const capital = cuota - interes;
-    saldo = Math.max(0, saldo - capital);
+  // Multiplicador solo para ajustar la TASA según la frecuencia
+  let multiplier = 1;
+  if (frecuencia === "diario") multiplier = 30;
+  else if (frecuencia === "semanal") multiplier = 4;
+  else if (frecuencia === "quincenal") multiplier = 2;
 
-    tabla.push({
-      mes,
-      cuota,
-      capital,
-      interes,
-      saldo,
-    });
+  const n = Math.max(1, parseInt(plazo));
+  const r = tasaMensual / multiplier;
+
+  if (tipo === "flat") {
+    // El interés total se calcula basado en el tiempo real (n cuotas / multiplicador = meses reales)
+    const totalInteresPlan = Math.round((montoPrincipal * tasaMensual * (n / multiplier)) / 1000) * 1000;
+    const capitalCuotaBase = Math.round((montoPrincipal / n) / 1000) * 1000;
+    const interesCuotaBase = Math.round((totalInteresPlan / n) / 1000) * 1000;
+    
+    let saldoCapital = montoPrincipal;
+    let saldoInteres = totalInteresPlan;
+
+    for (let mes = 1; mes <= n; mes++) {
+      let currentCapital = capitalCuotaBase;
+      let currentInteres = interesCuotaBase;
+
+      if (mes === n) {
+        currentCapital = saldoCapital;
+        currentInteres = saldoInteres;
+      } else {
+        currentCapital = Math.min(currentCapital, saldoCapital);
+        currentInteres = Math.min(currentInteres, saldoInteres);
+      }
+
+      saldoCapital -= currentCapital;
+      saldoInteres -= currentInteres;
+
+      tabla.push({
+        mes,
+        cuota: currentCapital + currentInteres,
+        capital: currentCapital,
+        interes: currentInteres,
+        saldo: Math.max(0, saldoCapital),
+      });
+    }
+  } else {
+    // Sistema Francés
+    const cuotaBase = Math.round((montoPrincipal * (r * Math.pow(1 + r, n))) / (Math.pow(1 + r, n) - 1) / 1000) * 1000;
+    let saldoCapital = montoPrincipal;
+
+    for (let mes = 1; mes <= n; mes++) {
+      let interes = Math.round((saldoCapital * r) / 1000) * 1000;
+      let capital = cuotaBase - interes;
+      
+      if (mes === n) {
+        capital = saldoCapital;
+      }
+      
+      saldoCapital = Math.max(0, saldoCapital - capital);
+
+      tabla.push({
+        mes,
+        cuota: capital + interes,
+        capital,
+        interes,
+        saldo: saldoCapital,
+      });
+    }
   }
 
   return tabla;
@@ -170,15 +228,16 @@ function calcularMesesTranscurridos(fechaInicio, fechaFin = new Date()) {
 /**
  * Formatea una cantidad en milunidades a moneda
  * @param {number} montoMilunidades
- * @param {string} moneda - Código de moneda (default: USD)
+ * @param {string} moneda - Código de moneda (default: COP)
  * @returns {string} Monto formateado
  */
-function formatearMoneda(montoMilunidades, moneda = "USD") {
+function formatearMoneda(montoMilunidades, moneda = "COP") {
   const monto = montoMilunidades / 1000;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
     currency: moneda,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(monto);
 }
 

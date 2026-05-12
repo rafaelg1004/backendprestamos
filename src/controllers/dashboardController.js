@@ -143,6 +143,13 @@ const obtenerResumen = asyncHandler(async (req, res) => {
               1000,
           ),
         },
+        salud_financiera: {
+          par_index: parseFloat(balanceVista.total_capital_en_la_calle) > 0 
+            ? (parseFloat(balanceVista.monto_total_en_mora) / parseFloat(balanceVista.total_capital_en_la_calle)) * 100 
+            : 0,
+          utilidad_mensual_proyectada: (parseFloat(balanceVista.intereses_ganados_clientes) || 0) - (parseFloat(balanceVista.intereses_pagados_inversionistas) || 0),
+          capital_ocioso: 0
+        },
         _meta: {
           fuente: "vista_balance_general",
           fecha_actualizacion: balanceVista.fecha_actualizacion,
@@ -282,6 +289,14 @@ const obtenerResumen = asyncHandler(async (req, res) => {
         montoPrestamosActivos +
         interesesPotenciales -
         (montoInversionesActivas + interesesInversionistas),
+    },
+    salud_financiera: {
+      par_index: montoPrestamosActivos > 0 
+        ? (prestamosEnMora.reduce((sum, p) => sum + parseFloat(p.monto_principal), 0) / montoPrestamosActivos) * 100 
+        : 0,
+      utilidad_mensual_proyectada: (prestamosActivos.reduce((sum, p) => sum + (parseFloat(p.monto_principal) * (p.tasa_interes_mensual / 100)), 0)) - 
+                                   (inversionesActivas.reduce((sum, i) => sum + (parseFloat(i.monto_invertido) * (i.tasa_interes_pactada / 100)), 0)),
+      capital_ocioso: 0 // Se puede implementar sumando saldos de cuentas
     },
     _meta: { fuente: "calculo_manual" },
   };
@@ -653,6 +668,51 @@ const obtenerFlujoCajaHistorico = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Obtener próximos pagos a inversionistas (intereses mensuales)
+ * GET /api/dashboard/alertas/inversionistas
+ */
+const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
+  const { rows: inversiones } = await db.query(
+    `SELECT i.*, 
+      json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'telefono', p.telefono) as inversionista
+    FROM inversiones i
+    JOIN perfiles p ON i.inversionista_id = p.id
+    WHERE i.estado = 'activo'
+    ORDER BY i.fecha_inversion ASC`
+  );
+
+  const hoy = new Date();
+  const proximosPagos = inversiones.map(inv => {
+    // Calcular el día del mes en que se hizo la inversión
+    const fechaInv = new Date(inv.fecha_inversion);
+    const diaPago = fechaInv.getDate();
+    
+    // Calcular fecha del próximo pago (este mes o el siguiente)
+    let proximoPago = new Date(hoy.getFullYear(), hoy.getMonth(), diaPago);
+    if (proximoPago < hoy) {
+      proximoPago.setMonth(proximoPago.getMonth() + 1);
+    }
+
+    const diasRestantes = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
+    const montoInteres = parseFloat(inv.monto_invertido) * (parseFloat(inv.tasa_interes_pactada) / 100);
+
+    return {
+      id: inv.id,
+      inversionista: inv.inversionista,
+      monto_a_pagar: montoInteres,
+      fecha_pago: proximoPago,
+      dias_restantes: diasRestantes,
+      nivel_alerta: diasRestantes <= 3 ? 'urgente' : 'proximo'
+    };
+  }).filter(p => p.dias_restantes <= 15); // Mostrar solo los próximos 15 días
+
+  res.json({
+    success: true,
+    data: proximosPagos
+  });
+});
+
 module.exports = {
   obtenerResumen,
   obtenerAlertasVencimientos,
@@ -660,4 +720,5 @@ module.exports = {
   obtenerDetalleClientes,
   obtenerDetalleInversionistas,
   obtenerFlujoCajaHistorico,
+  obtenerAlertasInversionistas,
 };

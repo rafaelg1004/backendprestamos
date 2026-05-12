@@ -24,6 +24,12 @@ router.get(
   dashboardController.obtenerAlertasVencimientos,
 );
 
+// GET /api/dashboard/alertas/inversionistas - Próximos pagos a inversionistas
+router.get(
+  "/alertas/inversionistas",
+  dashboardController.obtenerAlertasInversionistas,
+);
+
 // GET /api/dashboard/movimientos/recientes - Movimientos recientes
 router.get(
   "/movimientos/recientes",
