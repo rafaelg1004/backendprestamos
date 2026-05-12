@@ -10,5 +10,7 @@ router.get("/:id", cuentasController.obtenerCuentaPorId);
 router.post("/", cuentasController.crearCuenta);
 router.put("/:id", cuentasController.actualizarCuenta);
 router.delete("/:id", cuentasController.eliminarCuenta);
+router.post("/:id/sincronizar", cuentasController.sincronizarSaldo);
+
 
 module.exports = router;

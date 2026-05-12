@@ -153,12 +153,6 @@ const crearPrestamo = asyncHandler(async (req, res) => {
 
     // 2. Procesar salidas de dinero (Contabilidad: de qué cuentas sale)
     for (const salida of salidas) {
-      // Descontar del saldo de la cuenta específica
-      await client.query(
-        "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
-        [salida.monto, salida.cuenta_id]
-      );
-
       // Registrar movimiento individual por cuenta
       await client.query(
         `INSERT INTO movimientos (
@@ -707,12 +701,6 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
         new Date().toISOString(),
         notas,
       ],
-    );
-
-    // 2. Actualizar saldo de la cuenta (entrada de dinero)
-    await client.query(
-      "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2",
-      [monto_total, cuenta_id]
     );
 
     // 2. Actualizar estado del préstamo

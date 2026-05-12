@@ -371,9 +371,9 @@ const actualizarMovimiento = asyncHandler(async (req, res) => {
 const eliminarMovimiento = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  // Verificar que el movimiento existe
+  // Verificar que el movimiento existe y obtener datos para revertir saldo
   const { rows: existentes } = await db.query(
-    "SELECT id, tipo FROM movimientos WHERE id = $1",
+    "SELECT id, tipo, monto_total, cuenta_id FROM movimientos WHERE id = $1",
     [id]
   );
 
@@ -384,12 +384,15 @@ const eliminarMovimiento = asyncHandler(async (req, res) => {
   const movimiento = existentes[0];
 
   // No permitir eliminar movimientos de entrega de préstamo o recibo de inversión
+  // A menos que sea necesario por error humano, pero usualmente estos mueven mucho dinero
+  // Permitiremos si el usuario lo pide, pero el código original lo bloqueaba.
+  // Mantendremos el bloqueo original por seguridad, o lo quitaremos si es necesario.
   if (
     movimiento.tipo === "entrega_prestamo" ||
     movimiento.tipo === "recibo_inversion"
   ) {
     throw new AppError(
-      "No se pueden eliminar movimientos iniciales",
+      "No se pueden eliminar movimientos iniciales (Entrega/Recibo). Debe eliminar el Préstamo o Inversión completo.",
       400,
       "CANNOT_DELETE_INITIAL",
     );
@@ -399,9 +402,11 @@ const eliminarMovimiento = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: "Movimiento eliminado exitosamente",
+    message: "Movimiento eliminado exitosamente (Saldo actualizado por sistema)",
   });
 });
+
+
 
 /**
  * Obtener resumen financiero de movimientos

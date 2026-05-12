@@ -86,10 +86,55 @@ const eliminarCuenta = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Cuenta eliminada correctamente" });
 });
 
+/**
+ * Sincronizar el saldo de una cuenta basado en sus movimientos
+ * POST /api/cuentas/:id/sincronizar
+ */
+const sincronizarSaldo = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // 1. Verificar que la cuenta existe
+  const { rows: cuentas } = await db.query("SELECT id FROM cuentas WHERE id = $1", [id]);
+  if (cuentas.length === 0) {
+    throw new AppError("Cuenta no encontrada", 404);
+  }
+
+  // 2. Obtener todos los movimientos de esta cuenta
+  const { rows: movimientos } = await db.query(
+    "SELECT tipo, monto_total FROM movimientos WHERE cuenta_id = $1",
+    [id]
+  );
+
+  // 3. Calcular el saldo real
+  let nuevoSaldo = 0;
+  movimientos.forEach(m => {
+    const monto = parseFloat(m.monto_total);
+    // Entradas: pagos de clientes y dinero de inversionistas
+    const esEntrada = ["pago_cliente", "recibo_inversion"].includes(m.tipo);
+    if (esEntrada) {
+      nuevoSaldo += monto;
+    } else {
+      // Salidas: entrega de préstamos y devolución a inversionistas
+      nuevoSaldo -= monto;
+    }
+  });
+
+  // 4. Actualizar el saldo actual en la tabla de cuentas
+  await db.query("UPDATE cuentas SET saldo_actual = $1 WHERE id = $2", [nuevoSaldo, id]);
+
+  res.json({ 
+    success: true, 
+    data: { saldo_actual: nuevoSaldo },
+    message: "Saldo de la cuenta sincronizado correctamente con sus movimientos" 
+  });
+});
+
 module.exports = {
   obtenerCuentas,
   obtenerCuentaPorId,
   crearCuenta,
   actualizarCuenta,
   eliminarCuenta,
+  sincronizarSaldo,
 };
+

@@ -56,12 +56,6 @@ const crearInversion = asyncHandler(async (req, res) => {
       [inversionista_id, inversionRes.id, cuenta_id, monto_invertido, monto_invertido, 0, "recibo_inversion", new Date().toISOString()]
     );
 
-    // Actualizar saldo de la cuenta
-    await client.query(
-      "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2",
-      [monto_invertido, cuenta_id]
-    );
-
     await client.query("COMMIT");
 
     // Obtener inversión con perfil
@@ -358,12 +352,6 @@ const devolverInversion = asyncHandler(async (req, res) => {
         inversion.inversionista_id, id, cuenta_id, monto_total, monto_capital || 0, monto_interes || 0,
         metodo_pago, referencia_pago, url_captura, "devolucion_inversion", new Date().toISOString(), notas
       ]
-    );
-
-    // 2. Actualizar saldo de la cuenta (salida de dinero)
-    await client.query(
-      "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
-      [monto_total, cuenta_id]
     );
 
     // 2. Verificar si ya se devolvió todo para marcar como finalizada
