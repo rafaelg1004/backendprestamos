@@ -24,6 +24,8 @@ const inversionesRoutes = require("./routes/inversiones");
 const movimientosRoutes = require("./routes/movimientos");
 const dashboardRoutes = require("./routes/dashboard");
 const cuentasRoutes = require("./routes/cuentas");
+const reportesRoutes = require("./routes/reportes");
+
 
 const path = require("path");
 const app = express();
@@ -78,6 +80,8 @@ app.use("/api/inversiones", inversionesRoutes);
 app.use("/api/movimientos", movimientosRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/cuentas", cuentasRoutes);
+app.use("/api/reportes", reportesRoutes);
+
 
 // Ruta base
 app.get("/", (req, res) => {

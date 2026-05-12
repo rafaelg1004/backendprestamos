@@ -1009,6 +1009,94 @@ const obtenerFiltros = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Pagar una cuota específica
+ * POST /api/prestamos/cuotas/:id/pagar
+ */
+const pagarCuota = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { cuenta_id, metodo_pago, referencia_pago, notas } = req.body;
+
+  if (!cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta para recibir el pago", 400);
+  }
+
+  // 1. Obtener la cuota y el préstamo relacionado
+  const { rows: [cuota] } = await db.query(
+    `SELECT c.*, p.cliente_id, p.monto_principal 
+     FROM cuotas c 
+     JOIN prestamos p ON c.prestamo_id = p.id 
+     WHERE c.id = $1`, 
+    [id]
+  );
+
+  if (!cuota) {
+    throw new AppError("Cuota no encontrada", 404);
+  }
+
+  if (cuota.estado === 'pagada') {
+    throw new AppError("Esta cuota ya ha sido pagada", 400);
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 2. Marcar cuota como pagada
+    await client.query(
+      "UPDATE cuotas SET estado = 'pagada', fecha_pago = $1 WHERE id = $2",
+      [new Date().toISOString(), id]
+    );
+
+    // 3. Registrar el movimiento (El trigger actualizará el saldo de la cuenta)
+    await client.query(
+      `INSERT INTO movimientos (
+        perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
+        monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        cuota.cliente_id,
+        cuota.prestamo_id,
+        cuenta_id,
+        cuota.total_cuota,
+        cuota.capital,
+        cuota.interes,
+        'pago_cliente',
+        metodo_pago,
+        referencia_pago,
+        notas || `Pago de cuota #${cuota.numero_cuota}`,
+        new Date().toISOString()
+      ]
+    );
+
+    // 4. Verificar si todas las cuotas del préstamo están pagadas
+    const { rows: cuotasPendientes } = await client.query(
+      "SELECT id FROM cuotas WHERE prestamo_id = $1 AND estado = 'pendiente'",
+      [cuota.prestamo_id]
+    );
+
+    if (cuotasPendientes.length === 0) {
+      // Marcar préstamo como pagado
+      await client.query(
+        "UPDATE prestamos SET estado = 'pagado' WHERE id = $1",
+        [cuota.prestamo_id]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      message: `Cuota #${cuota.numero_cuota} pagada exitosamente`,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw new AppError("Error procesando pago de cuota: " + error.message, 500);
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = {
   crearPrestamo,
   obtenerPrestamos,
@@ -1023,5 +1111,7 @@ module.exports = {
   prepararCarpetaPrestamo,
   obtenerDocumentos,
   eliminarDocumento,
-  obtenerFiltros
+  pagarCuota,
+  obtenerFiltros,
 };
+

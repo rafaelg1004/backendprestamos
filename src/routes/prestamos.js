@@ -106,4 +106,13 @@ router.delete(
   prestamosController.eliminarDocumento
 );
 
+// POST /api/prestamos/cuotas/:id/pagar - Registrar pago de cuota
+router.post(
+  "/cuotas/:id/pagar",
+  [validaciones.uuid("id"), handleValidationErrors],
+  prestamosController.pagarCuota
+);
+
+
 module.exports = router;
+
