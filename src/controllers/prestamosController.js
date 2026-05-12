@@ -26,20 +26,32 @@ const crearPrestamo = asyncHandler(async (req, res) => {
     tasa_mora_diaria,
     fecha_inicio,
     fecha_vencimiento,
-    cuenta_id,
     fondos, // [{ inversion_id, monto }]
+    salidas, // [{ cuenta_id, monto }]
     notas,
     plazo_meses,
     frecuencia_pago,
     tipo_amortizacion,
   } = req.body;
 
-  if (!cuenta_id) {
-    throw new AppError("Debes seleccionar una cuenta de la cual sale el dinero", 400);
+  if (!fondos || !Array.isArray(fondos) || fondos.length === 0) {
+    throw new AppError("Debes especificar el reparto de inversionistas", 400);
   }
 
-  if (!fondos || !Array.isArray(fondos) || fondos.length === 0) {
-    throw new AppError("Debes especificar el origen de los fondos (inversionistas)", 400);
+  if (!salidas || !Array.isArray(salidas) || salidas.length === 0) {
+    throw new AppError("Debes especificar la salida de fondos (cuentas)", 400);
+  }
+
+  // Validar que el reparto de inversionistas sume el principal
+  const totalFondos = fondos.reduce((sum, f) => sum + parseFloat(f.monto), 0);
+  if (Math.abs(totalFondos - monto_principal) > 1) {
+    throw new AppError(`El reparto de inversionistas (${totalFondos}) no coincide con el principal (${monto_principal})`, 400);
+  }
+
+  // Validar que la salida de cuentas sume el principal
+  const totalSalidas = salidas.reduce((sum, s) => sum + parseFloat(s.monto), 0);
+  if (Math.abs(totalSalidas - monto_principal) > 1) {
+    throw new AppError(`La salida de cuentas (${totalSalidas}) no coincide con el principal (${monto_principal})`, 400);
   }
 
   // Verificar que el cliente existe y es tipo 'cliente'
@@ -66,6 +78,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
     await client.query("BEGIN");
 
     // Crear préstamo
+    const mainCuentaId = salidas[0].cuenta_id;
     const {
       rows: [prestamo],
     } = await client.query(
@@ -83,7 +96,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         fecha_inicio,
         fecha_vencimiento,
         "activo",
-        cuenta_id,
+        mainCuentaId,
         notas || null,
         plazo_meses || 1,
         frecuencia_pago || 'mensual',
@@ -130,7 +143,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       }
     }
 
-    // Registrar fondos (trazabilidad)
+    // 1. Registrar fondos (Trazabilidad: quién pone el dinero)
     for (const fondo of fondos) {
       await client.query(
         "INSERT INTO prestamo_fondos (prestamo_id, inversion_id, monto_aportado) VALUES ($1, $2, $3)",
@@ -138,30 +151,33 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       );
     }
 
-    // Actualizar saldo de la cuenta (salida de dinero)
-    await client.query(
-      "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
-      [monto_principal, cuenta_id]
-    );
+    // 2. Procesar salidas de dinero (Contabilidad: de qué cuentas sale)
+    for (const salida of salidas) {
+      // Descontar del saldo de la cuenta específica
+      await client.query(
+        "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
+        [salida.monto, salida.cuenta_id]
+      );
 
-    // Registrar movimiento de entrega de préstamo
-    await client.query(
-      `INSERT INTO movimientos (
-        perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-        monto_interes, monto_mora, tipo, fecha_operacion
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        cliente_id,
-        prestamo.id,
-        cuenta_id,
-        monto_principal,
-        monto_principal,
-        0,
-        0,
-        "entrega_prestamo",
-        new Date().toISOString(),
-      ],
-    );
+      // Registrar movimiento individual por cuenta
+      await client.query(
+        `INSERT INTO movimientos (
+          perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
+          monto_interes, monto_mora, tipo, fecha_operacion
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          cliente_id,
+          prestamo.id,
+          salida.cuenta_id,
+          salida.monto,
+          salida.monto,
+          0,
+          0,
+          "entrega_prestamo",
+          new Date().toISOString(),
+        ],
+      );
+    }
 
     await client.query("COMMIT");
 
@@ -207,8 +223,12 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
   const {
     estado,
     cliente_id,
+    inversionista_id,
+    tasa_interes,
+    fecha_desde,
+    fecha_hasta,
     page = 1,
-    limit = 20,
+    limit = 50,
     solo_mora = false,
   } = req.query;
 
@@ -237,6 +257,30 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
   if (cliente_id) {
     queryText += ` AND p.cliente_id = $${paramIndex++}`;
     queryParams.push(cliente_id);
+  }
+
+  if (inversionista_id) {
+    queryText += ` AND EXISTS (
+      SELECT 1 FROM prestamo_fondos pf 
+      JOIN inversiones inv ON pf.inversion_id = inv.id 
+      WHERE pf.prestamo_id = p.id AND inv.inversionista_id = $${paramIndex++}
+    )`;
+    queryParams.push(inversionista_id);
+  }
+
+  if (tasa_interes) {
+    queryText += ` AND p.tasa_interes_mensual = $${paramIndex++}`;
+    queryParams.push(tasa_interes);
+  }
+
+  if (fecha_desde) {
+    queryText += ` AND p.fecha_inicio >= $${paramIndex++}`;
+    queryParams.push(fecha_desde);
+  }
+
+  if (fecha_hasta) {
+    queryText += ` AND p.fecha_inicio <= $${paramIndex++}`;
+    queryParams.push(fecha_hasta);
   }
 
   if (solo_mora === "true") {
@@ -960,6 +1004,23 @@ const eliminarDocumento = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Obtener valores únicos para filtros (tasas, etc)
+ * GET /api/prestamos/filtros
+ */
+const obtenerFiltros = asyncHandler(async (req, res) => {
+  const { rows: tasas } = await db.query(
+    "SELECT DISTINCT tasa_interes_mensual FROM prestamos ORDER BY tasa_interes_mensual ASC"
+  );
+
+  res.json({
+    success: true,
+    data: {
+      tasas: tasas.map(t => t.tasa_interes_mensual)
+    }
+  });
+});
+
 module.exports = {
   crearPrestamo,
   obtenerPrestamos,
@@ -974,4 +1035,5 @@ module.exports = {
   prepararCarpetaPrestamo,
   obtenerDocumentos,
   eliminarDocumento,
+  obtenerFiltros
 };

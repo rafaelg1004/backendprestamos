@@ -21,6 +21,9 @@ router.use(verificarAuth);
 // GET /api/prestamos - Listar préstamos
 router.get("/", prestamosController.obtenerPrestamos);
 
+// GET /api/prestamos/filtros - Valores para filtros
+router.get("/filtros", prestamosController.obtenerFiltros);
+
 // GET /api/prestamos/mora/listado - Préstamos en mora
 router.get("/mora/listado", prestamosController.obtenerPrestamosMora);
 

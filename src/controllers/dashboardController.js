@@ -342,55 +342,53 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
     );
   }
 
-  // Fallback: Calcular manualmente con más detalle y rango de 15 días
+  // Fallback: Calcular manualmente basado en CUOTAS pendientes
   const hoy = new Date();
   const en15Dias = new Date();
   en15Dias.setDate(hoy.getDate() + 15);
-
   const en15DiasStr = en15Dias.toISOString().split("T")[0];
 
-  const { rows: prestamos } = await db.query(
-    `SELECT p.*, 
+  const { rows: cuotasPendientes } = await db.query(
+    `SELECT 
+      c.id as cuota_id,
+      c.prestamo_id,
+      c.numero_cuota,
+      c.fecha_vencimiento,
+      c.total_cuota as monto_total_cobrar,
+      c.capital as monto_capital_pendiente,
+      c.interes as monto_interes_pendiente,
+      p.tasa_interes_mensual,
+      p.monto_principal,
       json_build_object(
         'id', pref.id, 
         'nombre_completo', pref.nombre_completo, 
         'email', pref.email, 
         'telefono', pref.telefono
       ) as cliente
-    FROM prestamos p
+    FROM cuotas c
+    JOIN prestamos p ON c.prestamo_id = p.id
     JOIN perfiles pref ON p.cliente_id = pref.id
-    WHERE p.estado = 'activo' AND p.fecha_vencimiento <= $1
-    ORDER BY p.fecha_vencimiento ASC`,
+    WHERE c.estado = 'pendiente' 
+    AND p.estado = 'activo'
+    AND c.fecha_vencimiento <= $1
+    ORDER BY c.fecha_vencimiento ASC`,
     [en15DiasStr],
   );
 
-  const alertas = await Promise.all((prestamos || []).map(async (p) => {
-    const diasRestantes = Math.ceil((new Date(p.fecha_vencimiento) - hoy) / (1000 * 60 * 60 * 24));
+  const alertas = (cuotasPendientes || []).map((c) => {
+    const fechaVenc = new Date(c.fecha_vencimiento);
+    const diasRestantes = Math.ceil((fechaVenc - hoy) / (1000 * 60 * 60 * 24));
     
-    // Obtener pagos realizados para calcular saldo real
-    const { rows: movs } = await db.query(
-      "SELECT monto_capital, monto_interes FROM movimientos WHERE prestamo_id = $1 AND tipo = 'pago_cliente'",
-      [p.id]
-    );
-    
-    const capPagado = movs.reduce((sum, m) => sum + (parseFloat(m.monto_capital) || 0), 0);
-    const intPagado = movs.reduce((sum, m) => sum + (parseFloat(m.monto_interes) || 0), 0);
-    
-    const meses = calcularMesesTranscurridos(p.fecha_inicio);
-    const desglose = calcularDesglosePago({
-      montoPrincipal: parseFloat(p.monto_principal),
-      tasaInteresMensual: p.tasa_interes_mensual,
-      mesesTranscurridos: meses,
-      tasaMoraDiaria: p.tasa_mora_diaria,
-      diasMora: diasRestantes < 0 ? Math.abs(diasRestantes) : 0,
-    });
-
     return {
-      ...p,
+      id: c.prestamo_id,
+      cuota_id: c.cuota_id,
+      numero_cuota: c.numero_cuota,
+      cliente: c.cliente,
+      monto_total_cobrar: parseFloat(c.monto_total_cobrar),
+      monto_capital_pendiente: parseFloat(c.monto_capital_pendiente),
+      monto_interes_pendiente: parseFloat(c.monto_interes_pendiente),
+      fecha_vencimiento: c.fecha_vencimiento,
       dias_restantes: diasRestantes,
-      monto_capital_pendiente: parseFloat(p.monto_principal) - capPagado,
-      monto_interes_pendiente: Math.max(0, desglose.interes - intPagado),
-      monto_total_cobrar: (parseFloat(p.monto_principal) - capPagado) + Math.max(0, desglose.interes - intPagado) + desglose.mora,
       nivel_alerta:
         diasRestantes <= 0
           ? "vencido"
@@ -398,13 +396,13 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
             ? "urgente"
             : "proximo",
     };
-  }));
+  });
 
   res.json({
     success: true,
     data: alertas,
     total: alertas.length,
-    _meta: { fuente: "calculo_manual_detallado" },
+    _meta: { fuente: "calculo_manual_por_cuotas" },
   });
 });
 
