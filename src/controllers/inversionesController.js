@@ -173,14 +173,55 @@ const obtenerInversion = asyncHandler(async (req, res) => {
     throw new AppError("Inversion no encontrada", 404, "NOT_FOUND");
   }
 
-  // Obtener movimientos relacionados
+  // 1. Obtener movimientos directos de la inversión (devoluciones)
   const { rows: movimientos } = await db.query(
-    "SELECT * FROM movimientos WHERE inversion_id = $1",
+    "SELECT * FROM movimientos WHERE inversion_id = $1 ORDER BY fecha_operacion DESC",
     [id]
   );
   inversion.movimientos = movimientos;
 
-  // Calcular información financiera actual
+  // 2. Obtener préstamos financiados por esta inversión
+  const { rows: prestamosFinanciados } = await db.query(
+    `SELECT pf.monto_aportado, p.*, 
+      json_build_object('id', pref.id, 'nombre_completo', pref.nombre_completo, 'telefono', pref.telefono) as cliente
+    FROM prestamo_fondos pf
+    JOIN prestamos p ON pf.prestamo_id = p.id
+    JOIN perfiles pref ON p.cliente_id = pref.id
+    WHERE pf.inversion_id = $1`,
+    [id]
+  );
+
+  // 3. Obtener pagos de deudores y calcular saldos proporcionales
+  let totalEnCalleProporcional = 0;
+  
+  const prestamosConDetalle = await Promise.all(prestamosFinanciados.map(async (p) => {
+    const { rows: pagos } = await db.query(
+      "SELECT * FROM movimientos WHERE prestamo_id = $1 AND tipo = 'pago_cliente' ORDER BY fecha_operacion DESC",
+      [p.id]
+    );
+
+    const pagosCapital = pagos.reduce((sum, m) => sum + (parseFloat(m.monto_capital) || 0), 0);
+    const saldoCapitalPrestamo = parseFloat(p.monto_principal) - pagosCapital;
+    
+    // Proporción de esta inversión en el préstamo total
+    const proporcion = parseFloat(p.monto_aportado) / parseFloat(p.monto_principal);
+    const saldoCalleProporcional = saldoCapitalPrestamo * proporcion;
+    
+    totalEnCalleProporcional += saldoCalleProporcional;
+
+    return {
+      ...p,
+      movimientos: pagos,
+      calculos: {
+        saldo_capital_prestamo: saldoCapitalPrestamo,
+        saldo_calle_proporcional: saldoCalleProporcional,
+        pagos_capital: pagosCapital,
+        pagos_interes: pagos.reduce((sum, m) => sum + (parseFloat(m.monto_interes) || 0), 0),
+      }
+    };
+  }));
+
+  // 4. Calcular información financiera global de la inversión
   const mesesTranscurridos = calcularMesesTranscurridos(inversion.fecha_inversion);
   const retorno = calcularRetornoInversion(
     parseFloat(inversion.monto_invertido),
@@ -188,19 +229,23 @@ const obtenerInversion = asyncHandler(async (req, res) => {
     mesesTranscurridos,
   );
 
-  // Calcular devoluciones realizadas
+  // Calcular devoluciones realizadas al inversionista
   const devolucionesRealizadas = movimientos
     ?.filter((m) => m.tipo === "devolucion_inversion")
     ?.reduce((sum, m) => sum + parseFloat(m.monto_total), 0) || 0;
 
   const inversionCompleta = {
     ...inversion,
+    prestamos_financiados: prestamosConDetalle,
     calculos: {
       meses_transcurridos: mesesTranscurridos,
       interes_generado: retorno.interes,
       retorno_total: retorno.total,
       total_devuelto: devolucionesRealizadas,
       saldo_pendiente: Math.max(0, retorno.total - devolucionesRealizadas),
+      monto_en_calle: totalEnCalleProporcional,
+      disponible_en_cuenta: parseFloat(inversion.monto_invertido) - prestamosFinanciados.reduce((sum, p) => sum + parseFloat(p.monto_aportado), 0),
+      interes_proximo_mes: parseFloat(inversion.monto_invertido) * (parseFloat(inversion.tasa_interes_pactada) / 100),
     },
   };
 
