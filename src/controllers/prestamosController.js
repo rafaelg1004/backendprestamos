@@ -740,32 +740,40 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
 const eliminarPrestamo = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  // Verificar que no tenga movimientos (excepto el inicial)
-  const { rows: movimientos } = await db.query(
-    "SELECT id FROM movimientos WHERE prestamo_id = $1",
-    [id],
-  );
-
-  if (movimientos && movimientos.length > 1) {
-    throw new AppError(
-      "No se puede eliminar: el préstamo tiene pagos registrados",
-      400,
-      "HAS_PAYMENTS",
-    );
-  }
-
+  const client = await db.pool.connect();
   try {
-    await db.query("DELETE FROM prestamos WHERE id = $1", [id]);
+    await client.query("BEGIN");
+    
+    // Delete movimientos
+    await client.query("DELETE FROM movimientos WHERE prestamo_id = $1", [id]);
+    
+    // Delete cuotas
+    await client.query("DELETE FROM cuotas WHERE prestamo_id = $1", [id]);
+
+    // Delete prestamo_fondos
+    await client.query("DELETE FROM prestamo_fondos WHERE prestamo_id = $1", [id]);
+
+    // Delete prestamo_documentos
+    await client.query("DELETE FROM prestamo_documentos WHERE prestamo_id = $1", [id]);
+
+    // Finally delete prestamo
+    await client.query("DELETE FROM prestamos WHERE id = $1", [id]);
+
+    await client.query("COMMIT");
+
     res.json({
       success: true,
-      message: "Préstamo eliminado exitosamente",
+      message: "Préstamo eliminado exitosamente, incluyendo todos sus registros asociados",
     });
   } catch (error) {
+    await client.query("ROLLBACK");
     throw new AppError(
       "Error eliminando préstamo: " + error.message,
       400,
       "DB_ERROR",
     );
+  } finally {
+    client.release();
   }
 });
 
