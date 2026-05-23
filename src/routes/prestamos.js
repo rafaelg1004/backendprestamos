@@ -106,13 +106,12 @@ router.delete(
   prestamosController.eliminarDocumento
 );
 
-// POST /api/prestamos/cuotas/:id/pagar - Registrar pago de cuota
+// POST /api/prestamos/:id/pagos - Registrar pago libre (capital e intereses)
 router.post(
-  "/cuotas/:id/pagar",
+  "/:id/pagos",
   [validaciones.uuid("id"), handleValidationErrors],
-  prestamosController.pagarCuota
+  prestamosController.registrarPagoLibre
 );
 
 
 module.exports = router;
-

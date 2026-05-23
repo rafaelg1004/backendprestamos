@@ -259,6 +259,39 @@ function deMilunidades(montoMilunidades) {
   return montoMilunidades / 1000;
 }
 
+/**
+ * Calcula días transcurridos entre dos fechas
+ * @param {Date|string} fechaInicio
+ * @param {Date|string} fechaFin
+ * @returns {number} Días transcurridos
+ */
+function calcularDiasTranscurridos(fechaInicio, fechaFin = new Date()) {
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+
+  inicio.setHours(0, 0, 0, 0);
+  fin.setHours(0, 0, 0, 0);
+
+  const diffTime = fin - inicio;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  return Math.max(0, diffDays);
+}
+
+/**
+ * Calcula el interés generado para un crédito rotativo (interés simple por días)
+ * @param {number} saldoCapital - En milunidades
+ * @param {number} tasaInteresMensual - Porcentaje mensual (ej: 5 para 5%)
+ * @param {number} diasTranscurridos - Días desde el último corte
+ * @returns {number} Interés generado
+ */
+function calcularInteresRotativo(saldoCapital, tasaInteresMensual, diasTranscurridos) {
+  if (diasTranscurridos <= 0 || saldoCapital <= 0) return 0;
+  // La tasa mensual se divide por 30 para obtener tasa diaria
+  const tasaDiaria = (tasaInteresMensual / 100) / 30;
+  return Math.round(saldoCapital * tasaDiaria * diasTranscurridos);
+}
+
 module.exports = {
   calcularDiasMora,
   calcularInteresSimple,
@@ -268,6 +301,8 @@ module.exports = {
   calcularDesglosePago,
   calcularRetornoInversion,
   calcularMesesTranscurridos,
+  calcularDiasTranscurridos,
+  calcularInteresRotativo,
   formatearMoneda,
   aMilunidades,
   deMilunidades,

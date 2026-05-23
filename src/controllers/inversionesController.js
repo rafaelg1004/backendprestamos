@@ -61,7 +61,7 @@ const obtenerInversiones = asyncHandler(async (req, res) => {
     SELECT i.*, 
       json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'email', p.email) as inversionista,
       (
-        SELECT COALESCE(SUM(pf.monto_aportado), 0)
+        SELECT COALESCE(SUM(pf.monto_aportado - COALESCE(pf.capital_devuelto, 0)), 0)
         FROM prestamo_fondos pf
         JOIN prestamos pr ON pf.prestamo_id = pr.id
         WHERE pf.inversion_id = i.id AND pr.estado = 'activo'
@@ -136,6 +136,7 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   const { rows: prestamos_financiados_raw } = await db.query(`
     SELECT 
       pf.monto_aportado,
+      pf.capital_devuelto,
       p.id,
       p.monto_principal,
       p.fecha_vencimiento,
@@ -150,19 +151,22 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   // Enriquecer préstamos financiados con calculos básicos
   let montoEnCalle = 0;
   const prestamos_financiados = await Promise.all(prestamos_financiados_raw.map(async (pf) => {
-    if (pf.estado === 'activo') montoEnCalle += parseFloat(pf.monto_aportado);
-    
-    // Buscar movimientos (recaudos) de este préstamo
+    // Buscar movimientos (recaudos) de este préstamo para mostrar en el historial
     const { rows: movs } = await db.query(
       "SELECT monto_total, monto_capital, monto_interes, fecha_operacion, metodo_pago FROM movimientos WHERE prestamo_id = $1 AND tipo = 'pago_cliente' ORDER BY fecha_operacion DESC LIMIT 5",
       [pf.id]
     );
 
+    const capitalDevuelto = parseFloat(pf.capital_devuelto || 0);
+    const saldoCalleReal = pf.estado === 'activo' ? Math.max(0, parseFloat(pf.monto_aportado) - capitalDevuelto) : 0;
+
+    montoEnCalle += saldoCalleReal;
+
     return {
       ...pf,
       movimientos: movs,
       calculos: {
-        saldo_calle_proporcional: pf.estado === 'activo' ? parseFloat(pf.monto_aportado) : 0
+        saldo_calle_proporcional: saldoCalleReal
       }
     };
   }));
