@@ -111,18 +111,60 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   proximoPago.setMonth(proximoPago.getMonth() + 1);
   const diasParaPago = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
 
+  // --- Obtener Préstamos Financiados ---
+  const { rows: prestamos_financiados_raw } = await db.query(`
+    SELECT 
+      pf.monto_aportado,
+      p.id,
+      p.monto_principal,
+      p.fecha_vencimiento,
+      p.estado,
+      json_build_object('nombre_completo', cli.nombre_completo) as cliente
+    FROM prestamo_fondos pf
+    JOIN prestamos p ON pf.prestamo_id = p.id
+    JOIN perfiles cli ON p.cliente_id = cli.id
+    WHERE pf.inversion_id = $1
+  `, [id]);
+
+  // Enriquecer préstamos financiados con calculos básicos
+  let montoEnCalle = 0;
+  const prestamos_financiados = await Promise.all(prestamos_financiados_raw.map(async (pf) => {
+    if (pf.estado === 'activo') montoEnCalle += parseFloat(pf.monto_aportado);
+    
+    // Buscar movimientos (recaudos) de este préstamo
+    const { rows: movs } = await db.query(
+      "SELECT monto_total, monto_capital, monto_interes, fecha_operacion, metodo_pago FROM movimientos WHERE prestamo_id = $1 AND tipo = 'pago_cliente' ORDER BY fecha_operacion DESC LIMIT 5",
+      [pf.id]
+    );
+
+    return {
+      ...pf,
+      movimientos: movs,
+      calculos: {
+        saldo_calle_proporcional: pf.estado === 'activo' ? parseFloat(pf.monto_aportado) : 0
+      }
+    };
+  }));
+
+  const disponibleEnCuenta = capitalPendiente - montoEnCalle;
+  const retornoTotal = interesPagado; // O sumar los intereses proyectados
+
   res.json({
     success: true,
     data: {
       ...inversion,
       movimientos,
+      prestamos_financiados,
       calculos: {
         capital_pendiente: capitalPendiente,
         interes_pagado: interesPagado,
         interes_sugerido: Math.max(0, Math.round(interesSugerido)),
         proxima_fecha_pago: proximoPago.toISOString(),
         dias_para_pago: diasParaPago,
-        en_mora: diasParaPago < 0
+        en_mora: diasParaPago < 0,
+        monto_en_calle: montoEnCalle,
+        disponible_en_cuenta: disponibleEnCuenta,
+        retorno_total: retornoTotal
       }
     }
   });
