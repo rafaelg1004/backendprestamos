@@ -67,6 +67,14 @@ const crearPerfil = asyncHandler(async (req, res) => {
     ],
   );
 
+  // Si el rol es inversionista, crearle su billetera virtual para intereses automáticamente
+  if (rol === "inversionista") {
+    await db.query(
+      "INSERT INTO cuentas (nombre, tipo, saldo_actual, perfil_id) VALUES ($1, $2, $3, $4)",
+      [`Billetera - ${sanitizarString(nombre_completo)}`, 'billetera', 0, perfilId]
+    );
+  }
+
   res.status(201).json({
     success: true,
     data: perfil,
