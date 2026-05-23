@@ -59,12 +59,33 @@ const crearInversion = asyncHandler(async (req, res) => {
 const obtenerInversiones = asyncHandler(async (req, res) => {
   const { rows } = await db.query(`
     SELECT i.*, 
-      json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'email', p.email) as inversionista
+      json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'email', p.email) as inversionista,
+      (
+        SELECT COALESCE(SUM(pf.monto_aportado), 0)
+        FROM prestamo_fondos pf
+        JOIN prestamos pr ON pf.prestamo_id = pr.id
+        WHERE pf.inversion_id = i.id AND pr.estado = 'activo'
+      ) as monto_en_calle,
+      (
+        SELECT COALESCE(SUM(m.monto_capital), 0)
+        FROM movimientos m
+        WHERE m.inversion_id = i.id AND m.tipo = 'devolucion_inversion'
+      ) as capital_devuelto
     FROM inversiones i
     JOIN perfiles p ON i.inversionista_id = p.id
     ORDER BY i.fecha_inversion DESC
   `);
-  res.json({ success: true, data: rows });
+
+  const data = rows.map(inv => {
+    const capitalPendiente = parseFloat(inv.monto_invertido) - parseFloat(inv.capital_devuelto);
+    const saldoDisponible = capitalPendiente - parseFloat(inv.monto_en_calle);
+    return {
+      ...inv,
+      saldo_disponible: Math.max(0, saldoDisponible)
+    };
+  });
+
+  res.json({ success: true, data });
 });
 
 /**
