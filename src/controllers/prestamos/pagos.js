@@ -148,44 +148,31 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
 
     // Registrar movimientos
     const cuentaCapital = cuenta_id;
-    const cuentaIntereses = cuenta_intereses_id || cuenta_id;
 
-    if (cuentaCapital === cuentaIntereses) {
+    if (capitalAPagar > 0) {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
           monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
-          prestamo.cliente_id, prestamo.id, cuentaCapital, totalPago, capitalAPagar, interesAPagar,
-          'pago_cliente', metodo_pago, referencia_pago, notas || 'Pago libre a crédito rotativo', new Date().toISOString()
+          prestamo.cliente_id, prestamo.id, cuentaCapital, capitalAPagar, capitalAPagar, 0,
+          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString()
         ]
       );
-    } else {
-      if (capitalAPagar > 0) {
-        await client.query(
-          `INSERT INTO movimientos (
-            perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-            monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            prestamo.cliente_id, prestamo.id, cuentaCapital, capitalAPagar, capitalAPagar, 0,
-            'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString()
-          ]
-        );
-      }
-      if (interesAPagar > 0) {
-        await client.query(
-          `INSERT INTO movimientos (
-            perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-            monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            prestamo.cliente_id, prestamo.id, cuentaIntereses, interesAPagar, 0, interesAPagar,
-            'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses'), new Date().toISOString()
-          ]
-        );
-      }
+    }
+    
+    if (interesAPagar > 0) {
+      await client.query(
+        `INSERT INTO movimientos (
+          perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
+          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          prestamo.cliente_id, prestamo.id, null, interesAPagar, 0, interesAPagar,
+          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString()
+        ]
+      );
     }
 
     if (distribucion_capital && Array.isArray(distribucion_capital)) {
@@ -200,11 +187,48 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     }
 
     if (distribucion_intereses && Array.isArray(distribucion_intereses)) {
+      let sumaInteresesDistribuidos = 0;
       for (const dist of distribucion_intereses) {
-        if (parseFloat(dist.monto) > 0) {
+        const montoDist = parseFloat(dist.monto);
+        if (montoDist > 0) {
+          sumaInteresesDistribuidos += montoDist;
+          
           await client.query(
             "UPDATE prestamo_fondos SET interes_devuelto = COALESCE(interes_devuelto, 0) + $1 WHERE prestamo_id = $2 AND inversion_id = $3",
-            [parseFloat(dist.monto), prestamo.id, dist.inversion_id]
+            [montoDist, prestamo.id, dist.inversion_id]
+          );
+
+          // Sumar al saldo de la billetera ficticia del inversionista
+          const { rows: invRows } = await client.query(
+            "SELECT inversionista_id FROM inversiones WHERE id = $1",
+            [dist.inversion_id]
+          );
+          if (invRows.length > 0) {
+            await client.query(
+              "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE perfil_id = $2 AND tipo = 'billetera'",
+              [montoDist, invRows[0].inversionista_id]
+            );
+          }
+        }
+      }
+
+      // Ganancia residual (remnant) para Yesika
+      const gananciaAdmin = interesAPagar - sumaInteresesDistribuidos;
+      if (gananciaAdmin > 0) {
+        // Encontrar a YESIKA CALDERÓN CANO o YESIKA (principal investor)
+        const { rows: yesikaRows } = await client.query(
+          "SELECT id FROM perfiles WHERE nombre_completo ILIKE '%YESIKA%' AND rol IN ('inversionista', 'admin') LIMIT 1"
+        );
+        if (yesikaRows.length > 0) {
+          await client.query(
+            "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE perfil_id = $2 AND tipo = 'billetera'",
+            [gananciaAdmin, yesikaRows[0].id]
+          );
+        } else {
+          // Fallback a admin generico si no encuentra a Yesika (poco probable)
+          await client.query(
+            "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE tipo = 'billetera' AND nombre ILIKE '%Admin%'",
+            [gananciaAdmin]
           );
         }
       }

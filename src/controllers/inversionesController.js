@@ -114,18 +114,18 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   const interesPagado = movimientos.filter(m => m.tipo === 'devolucion_inversion').reduce((s, m) => s + parseFloat(m.monto_interes), 0);
   const capitalPendiente = parseFloat(inversion.monto_invertido) - capitalPagado;
 
-  // --- Lógica de Interés Sugerido (Nueva Función 2) ---
+  // --- Lógica de Interés (Saldos en Billetera Virtual) ---
   const ultimoPagoInteres = movimientos.find(m => m.tipo === 'devolucion_inversion' && parseFloat(m.monto_interes) > 0);
   const fechaReferencia = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion) : new Date(inversion.fecha_inversion);
   
   const hoy = new Date();
-  const diffTiempo = Math.abs(hoy - fechaReferencia);
-  const diasTranscurridos = Math.floor(diffTiempo / (1000 * 60 * 60 * 24));
   
-  // Interés diario sugerido sobre el capital pendiente
-  const tasaMensual = inversion.tasa_interes_pactada / 100;
-  const tasaDiaria = tasaMensual / 30;
-  const interesSugerido = capitalPendiente * tasaDiaria * diasTranscurridos;
+  // Obtener saldo de la billetera del inversionista
+  const { rows: [billetera] } = await db.query(
+    "SELECT saldo_actual FROM cuentas WHERE tipo = 'billetera' AND perfil_id = $1",
+    [inversion.inversionista_id]
+  );
+  const interesSugerido = billetera ? parseFloat(billetera.saldo_actual) : 0;
 
   // --- Alerta de Pago (Nueva Función 3) ---
   const proximoPago = new Date(fechaReferencia);
@@ -227,7 +227,7 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
       throw new AppError(`No puedes pagar más capital del pendiente ($ ${capitalPendiente.toLocaleString()})`, 400);
     }
 
-    // 3. Registrar Movimiento
+    // 3. Registrar Movimiento físico
     const { rows: [movimiento] } = await client.query(
       `INSERT INTO movimientos (
         perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
@@ -240,6 +240,14 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
         new Date().toISOString(), notas
       ]
     );
+
+    // 3.5. Restar intereses de la Billetera Virtual (Si hay pago de intereses)
+    if (parseFloat(monto_interes || 0) > 0) {
+      await client.query(
+        "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE tipo = 'billetera' AND perfil_id = $2",
+        [parseFloat(monto_interes), inversion.inversionista_id]
+      );
+    }
 
     // 4. Finalizar si el capital llega a cero
     if ((capitalYaDevuelto + parseFloat(monto_capital || 0)) >= parseFloat(inversion.monto_invertido)) {

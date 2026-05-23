@@ -82,25 +82,32 @@ const obtenerPerfiles = asyncHandler(async (req, res) => {
   const { rol, search, page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
 
-  let queryText =
-    "SELECT *, COUNT(*) OVER() as total_count FROM perfiles WHERE 1=1";
+  let queryText = `
+    SELECT p.*, 
+           c.id as billetera_id, 
+           c.saldo_actual as billetera_saldo,
+           COUNT(*) OVER() as total_count 
+    FROM perfiles p
+    LEFT JOIN cuentas c ON p.id = c.perfil_id AND c.tipo = 'billetera'
+    WHERE 1=1
+  `;
   const queryParams = [];
   let paramIndex = 1;
 
   // Filtros
   if (rol) {
-    queryText += ` AND rol = $${paramIndex++}`;
+    queryText += ` AND p.rol = $${paramIndex++}`;
     queryParams.push(rol);
   }
 
   if (search) {
-    queryText += ` AND (nombre_completo ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
+    queryText += ` AND (p.nombre_completo ILIKE $${paramIndex} OR p.email ILIKE $${paramIndex})`;
     queryParams.push(`%${search}%`);
     paramIndex++;
   }
 
   // Orden y Paginación
-  queryText += ` ORDER BY fecha_registro DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+  queryText += ` ORDER BY p.fecha_registro DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
   queryParams.push(limit, offset);
 
   try {
