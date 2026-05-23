@@ -6,7 +6,13 @@ const { asyncHandler, AppError } = require("../middleware/errorHandler");
  * GET /api/cuentas
  */
 const obtenerCuentas = asyncHandler(async (req, res) => {
-  const { rows } = await db.query("SELECT * FROM cuentas ORDER BY nombre ASC");
+  const { incluir_billeteras } = req.query;
+  let query = "SELECT * FROM cuentas";
+  if (incluir_billeteras !== 'true') {
+    query += " WHERE tipo != 'billetera'";
+  }
+  query += " ORDER BY nombre ASC";
+  const { rows } = await db.query(query);
   res.json({ success: true, data: rows });
 });
 

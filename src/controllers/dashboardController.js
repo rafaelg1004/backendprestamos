@@ -342,52 +342,59 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
     );
   }
 
-  // Fallback: Calcular manualmente basado en CUOTAS pendientes
+  // Fallback: Calcular manualmente basado en prestamos en mora o próximos a corte
   const hoy = new Date();
   const en15Dias = new Date();
   en15Dias.setDate(hoy.getDate() + 15);
   const en15DiasStr = en15Dias.toISOString().split("T")[0];
 
-  const { rows: cuotasPendientes } = await db.query(
+  // Buscar prestamos activos donde el próximo pago (fecha_inicio/corte + 30 dias o fecha_vencimiento) esté cerca
+  const { rows: prestamosActivos } = await db.query(
     `SELECT 
-      c.id as cuota_id,
-      c.prestamo_id,
-      c.numero_cuota,
-      c.fecha_vencimiento,
-      c.total_cuota as monto_total_cobrar,
-      c.capital as monto_capital_pendiente,
-      c.interes as monto_interes_pendiente,
+      p.id as prestamo_id,
+      p.fecha_vencimiento,
+      p.fecha_ultimo_corte,
+      p.fecha_inicio,
+      p.saldo_capital,
+      p.interes_acumulado,
       p.tasa_interes_mensual,
-      p.monto_principal,
       json_build_object(
         'id', pref.id, 
         'nombre_completo', pref.nombre_completo, 
         'email', pref.email, 
         'telefono', pref.telefono
       ) as cliente
-    FROM cuotas c
-    JOIN prestamos p ON c.prestamo_id = p.id
+    FROM prestamos p
     JOIN perfiles pref ON p.cliente_id = pref.id
-    WHERE c.estado = 'pendiente' 
-    AND p.estado = 'activo'
-    AND c.fecha_vencimiento <= $1
-    ORDER BY c.fecha_vencimiento ASC`,
-    [en15DiasStr],
+    WHERE p.estado = 'activo'`
   );
 
-  const alertas = (cuotasPendientes || []).map((c) => {
-    const fechaVenc = new Date(c.fecha_vencimiento);
-    const diasRestantes = Math.ceil((fechaVenc - hoy) / (1000 * 60 * 60 * 24));
+  const alertas = prestamosActivos.map((p) => {
+    // Calculamos la fecha en la que "debería" pagar intereses (30 días después del último corte o inicio)
+    const fechaRef = p.fecha_ultimo_corte ? new Date(p.fecha_ultimo_corte) : new Date(p.fecha_inicio);
+    const fechaVenc = new Date(fechaRef);
+    fechaVenc.setDate(fechaVenc.getDate() + 30);
     
+    // Si la fecha de vencimiento final es antes, usamos esa
+    const fechaVencFinal = p.fecha_vencimiento ? new Date(p.fecha_vencimiento) : null;
+    const proximaFechaPago = (fechaVencFinal && fechaVencFinal < fechaVenc) ? fechaVencFinal : fechaVenc;
+    
+    const diasRestantes = Math.ceil((proximaFechaPago - hoy) / (1000 * 60 * 60 * 24));
+    
+    // Interés aproximado que debería al día de pago
+    const tasaDiaria = parseFloat(p.tasa_interes_mensual) / 30 / 100;
+    const interesGenerado = parseFloat(p.saldo_capital) * tasaDiaria * 30; // aprox mensual
+    const deudaInteres = parseFloat(p.interes_acumulado || 0) + interesGenerado;
+
     return {
-      id: c.prestamo_id,
-      cuota_id: c.cuota_id,
-      numero_cuota: c.numero_cuota,
-      cliente: c.cliente,
-      monto_total_cobrar: parseFloat(c.monto_total_cobrar),
-      monto_capital_pendiente: parseFloat(c.monto_capital_pendiente),
-      monto_interes_pendiente: parseFloat(c.monto_interes_pendiente),
-      fecha_vencimiento: c.fecha_vencimiento,
+      id: p.prestamo_id,
+      cuota_id: p.prestamo_id, // fake id para que el frontend no rompa
+      numero_cuota: "Pago Abierto",
+      cliente: p.cliente,
+      monto_total_cobrar: deudaInteres + parseFloat(p.saldo_capital),
+      monto_capital_pendiente: parseFloat(p.saldo_capital),
+      monto_interes_pendiente: deudaInteres,
+      fecha_vencimiento: proximaFechaPago.toISOString().split("T")[0],
       dias_restantes: diasRestantes,
       nivel_alerta:
         diasRestantes <= 0
@@ -396,13 +403,13 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
             ? "urgente"
             : "proximo",
     };
-  });
+  }).filter(p => p.dias_restantes <= 15).sort((a, b) => a.dias_restantes - b.dias_restantes);
 
   res.json({
     success: true,
     data: alertas,
     total: alertas.length,
-    _meta: { fuente: "calculo_manual_por_cuotas" },
+    _meta: { fuente: "calculo_manual_credito_abierto" },
   });
 });
 
