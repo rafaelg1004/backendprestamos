@@ -67,6 +67,14 @@ const validaciones = {
       .withMessage(`${campo} debe ser una fecha válida`);
   },
 
+  // Fecha opcional
+  fechaOpcional: (campo) => {
+    return body(campo)
+      .optional({ nullable: true, checkFalsy: true })
+      .isISO8601()
+      .withMessage(`${campo} debe ser una fecha válida`);
+  },
+
   // Enum de tipo persona
   tipoPersona: (campo = "rol") => {
     return body(campo)

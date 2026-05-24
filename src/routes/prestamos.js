@@ -36,7 +36,7 @@ router.post(
     validaciones.tasaInteres("tasa_interes_mensual"),
     validaciones.tasaInteres("tasa_mora_diaria"),
     validaciones.fecha("fecha_inicio"),
-    validaciones.fecha("fecha_vencimiento"),
+    validaciones.fechaOpcional("fecha_vencimiento"),
     handleValidationErrors,
   ],
   prestamosController.crearPrestamo,
