@@ -28,7 +28,27 @@ const obtenerCuentaPorId = asyncHandler(async (req, res) => {
     throw new AppError("Cuenta no encontrada", 404);
   }
 
-  res.json({ success: true, data: rows[0] });
+  const cuenta = rows[0];
+
+  // Si la cuenta pertenece a un perfil (billetera), buscar rendimientos de sus inversiones
+  if (cuenta.perfil_id) {
+    const { rows: rendimientos } = await db.query(`
+      SELECT 
+        i.id as inversion_id,
+        i.fecha_inversion,
+        i.monto_invertido,
+        COALESCE(SUM(pf.interes_devuelto), 0) as total_ganado
+      FROM inversiones i
+      LEFT JOIN prestamo_fondos pf ON i.id = pf.inversion_id
+      WHERE i.inversionista_id = $1
+      GROUP BY i.id
+      HAVING COALESCE(SUM(pf.interes_devuelto), 0) > 0
+    `, [cuenta.perfil_id]);
+    
+    cuenta.rendimientos_por_inversion = rendimientos;
+  }
+
+  res.json({ success: true, data: cuenta });
 });
 
 /**
@@ -115,8 +135,8 @@ const sincronizarSaldo = asyncHandler(async (req, res) => {
   let nuevoSaldo = 0;
   movimientos.forEach(m => {
     const monto = parseFloat(m.monto_total);
-    // Entradas: pagos de clientes y dinero de inversionistas
-    const esEntrada = ["pago_cliente", "recibo_inversion"].includes(m.tipo);
+    // Entradas: pagos de clientes, dinero de inversionistas, ganancias de interés
+    const esEntrada = ["pago_cliente", "recibo_inversion", "ganancia_interes"].includes(m.tipo);
     if (esEntrada) {
       nuevoSaldo += monto;
     } else {

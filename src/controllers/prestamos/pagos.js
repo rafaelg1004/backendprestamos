@@ -204,10 +204,23 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
             [dist.inversion_id]
           );
           if (invRows.length > 0) {
-            await client.query(
-              "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE perfil_id = $2 AND tipo = 'billetera'",
+            const { rows: cuentaInv } = await client.query(
+              "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE perfil_id = $2 AND tipo = 'billetera' RETURNING id",
               [montoDist, invRows[0].inversionista_id]
             );
+            
+            if (cuentaInv.length > 0) {
+              await client.query(
+                `INSERT INTO movimientos (
+                  perfil_id, prestamo_id, inversion_id, cuenta_id, monto_total, monto_capital, 
+                  monto_interes, tipo, metodo_pago, notas, fecha_operacion
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [
+                  invRows[0].inversionista_id, prestamo.id, dist.inversion_id, cuentaInv[0].id, montoDist, 0,
+                  montoDist, 'ganancia_interes', 'sistema', 'Ganancia por intereses de inversión', new Date().toISOString()
+                ]
+              );
+            }
           }
         }
       }
@@ -216,10 +229,23 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       const gananciaAdmin = interesAPagar - sumaInteresesDistribuidos;
       if (gananciaAdmin > 0) {
         // Enviar a la Billetera de Ganancias Admin
-        await client.query(
-          "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE tipo = 'billetera' AND nombre ILIKE '%Admin%'",
+        const { rows: adminCuenta } = await client.query(
+          "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE tipo = 'billetera' AND nombre ILIKE '%Admin%' RETURNING id, perfil_id",
           [gananciaAdmin]
         );
+        
+        if (adminCuenta.length > 0) {
+          await client.query(
+            `INSERT INTO movimientos (
+              perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
+              monto_interes, tipo, metodo_pago, notas, fecha_operacion
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              adminCuenta[0].perfil_id, prestamo.id, adminCuenta[0].id, gananciaAdmin, 0,
+              gananciaAdmin, 'ganancia_interes', 'sistema', 'Spread administrativo', new Date().toISOString()
+            ]
+          );
+        }
       }
     }
 

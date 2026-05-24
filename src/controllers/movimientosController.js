@@ -188,6 +188,7 @@ const obtenerMovimientos = asyncHandler(async (req, res) => {
     fecha_desde,
     fecha_hasta,
     metodo_pago,
+    cuenta_id,
     page = 1,
     limit = 20,
   } = req.query;
@@ -241,6 +242,10 @@ const obtenerMovimientos = asyncHandler(async (req, res) => {
   if (metodo_pago) {
     queryText += ` AND m.metodo_pago = $${paramIndex++}`;
     queryParams.push(metodo_pago);
+  }
+  if (cuenta_id) {
+    queryText += ` AND m.cuenta_id = $${paramIndex++}`;
+    queryParams.push(cuenta_id);
   }
   if (fecha_desde) {
     queryText += ` AND m.fecha_operacion >= $${paramIndex++}`;
