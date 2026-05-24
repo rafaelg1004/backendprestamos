@@ -83,7 +83,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
         tasa_interes_mensual,
         tasa_mora_diaria,
         fecha_inicio,
-        fecha_vencimiento,
+        fecha_vencimiento || null,
         "activo",
         mainCuentaId,
         notas || null,
