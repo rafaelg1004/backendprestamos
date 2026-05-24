@@ -212,25 +212,14 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
         }
       }
 
-      // Ganancia residual (remnant) para Yesika
+      // Ganancia residual (remnant) para la Billetera del Admin
       const gananciaAdmin = interesAPagar - sumaInteresesDistribuidos;
       if (gananciaAdmin > 0) {
-        // Encontrar a YESIKA CALDERÓN CANO o YESIKA (principal investor)
-        const { rows: yesikaRows } = await client.query(
-          "SELECT id FROM perfiles WHERE nombre_completo ILIKE '%YESIKA%' AND rol IN ('inversionista', 'admin') LIMIT 1"
+        // Enviar a la Billetera de Ganancias Admin
+        await client.query(
+          "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE tipo = 'billetera' AND nombre ILIKE '%Admin%'",
+          [gananciaAdmin]
         );
-        if (yesikaRows.length > 0) {
-          await client.query(
-            "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE perfil_id = $2 AND tipo = 'billetera'",
-            [gananciaAdmin, yesikaRows[0].id]
-          );
-        } else {
-          // Fallback a admin generico si no encuentra a Yesika (poco probable)
-          await client.query(
-            "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE tipo = 'billetera' AND nombre ILIKE '%Admin%'",
-            [gananciaAdmin]
-          );
-        }
       }
     }
 
