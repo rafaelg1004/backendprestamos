@@ -141,7 +141,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
         nuevoSaldoCapital, 
         nuevoInteresAcumulado, 
         new Date().toISOString().split('T')[0], // Corta los intereses a hoy
-        nuevoSaldoCapital <= 0 ? 'pagado' : 'activo',
+        (nuevoSaldoCapital <= 0 && nuevoInteresAcumulado <= 0) ? 'pagado' : 'activo',
         id
       ]
     );
