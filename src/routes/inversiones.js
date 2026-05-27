@@ -2,13 +2,15 @@ const express = require('express');
 const router = express.Router();
 const inversionesController = require('../controllers/inversionesController');
 const { handleValidationErrors, validaciones } = require('../middleware/validate');
-const { verificarAuth } = require('../middleware/auth');
+const { verificarAuth, verificarPermisos } = require('../middleware/auth');
 
 // Ruta PÚBLICA - Debe ir ANTES de aplicar el middleware verificarAuth
 router.get("/publico/cedula/:cedula", inversionesController.obtenerInversionistaPorCedulaPublico);
 
 // Todas las rutas requieren autenticación
 router.use(verificarAuth);
+// Adicionalmente, todas las operaciones de inversiones requieren el permiso ver_inversiones
+router.use(verificarPermisos(['ver_inversiones']));
 
 // GET /api/inversiones - Listar inversiones
 router.get('/', inversionesController.obtenerInversiones);
