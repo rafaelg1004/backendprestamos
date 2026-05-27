@@ -30,7 +30,9 @@ function calcularDiasMora(fechaVencimiento) {
  * @returns {number} Interés calculado en milunidades
  */
 function calcularInteresSimple(montoPrincipal, tasaInteresMensual, meses) {
-  return Math.round(montoPrincipal * (tasaInteresMensual / 100) * meses);
+  const interes = montoPrincipal * (tasaInteresMensual / 100) * meses;
+  // Redondear hacia arriba al millar más cercano (a favor del admin)
+  return Math.ceil(interes / 1000) * 1000;
 }
 
 /**
@@ -42,7 +44,9 @@ function calcularInteresSimple(montoPrincipal, tasaInteresMensual, meses) {
  */
 function calcularMora(montoPrincipal, tasaMoraDiaria, diasMora) {
   if (diasMora <= 0) return 0;
-  return Math.round(montoPrincipal * (tasaMoraDiaria / 100) * diasMora);
+  const mora = montoPrincipal * (tasaMoraDiaria / 100) * diasMora;
+  // Redondear hacia arriba al millar más cercano
+  return Math.ceil(mora / 1000) * 1000;
 }
 
 /**
@@ -62,8 +66,8 @@ function calcularCuotaMensual(montoPrincipal, tasaInteresMensual, meses) {
   const cuota =
     (montoPrincipal * (i * Math.pow(1 + i, n))) / (Math.pow(1 + i, n) - 1);
 
-  // Redondeo al millar más cercano (ej: 562.964 -> 563.000)
-  return Math.round(cuota / 1000) * 1000;
+  // Redondeo hacia arriba al millar más cercano (ej: 562.100 -> 563.000)
+  return Math.ceil(cuota / 1000) * 1000;
 }
 
 /**
@@ -289,7 +293,9 @@ function calcularInteresRotativo(saldoCapital, tasaInteresMensual, diasTranscurr
   if (diasTranscurridos <= 0 || saldoCapital <= 0) return 0;
   // La tasa mensual se divide por 30 para obtener tasa diaria
   const tasaDiaria = (tasaInteresMensual / 100) / 30;
-  return Math.round(saldoCapital * tasaDiaria * diasTranscurridos);
+  const interes = saldoCapital * tasaDiaria * diasTranscurridos;
+  // Redondear hacia arriba al millar más cercano a favor del admin
+  return Math.ceil(interes / 1000) * 1000;
 }
 
 module.exports = {
