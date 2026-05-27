@@ -109,7 +109,7 @@ router.get(
       const db = require("../config/db");
       const { randomUUID } = require("crypto");
       
-      const { rows } = await db.query("SELECT ruta_archivo FROM documentos WHERE id = $1", [docId]);
+      const { rows } = await db.query("SELECT ruta_archivo FROM prestamo_documentos WHERE id = $1", [docId]);
       if (rows.length === 0) return res.status(404).json({ error: "Documento no encontrado" });
       
       const token = randomUUID();
