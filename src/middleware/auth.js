@@ -186,9 +186,30 @@ const authOpcional = async (req, res, next) => {
   }
 };
 
+// Middleware para consumir un solo uso de token en documentos
+const verificarTokenUnico = async (req, res, next) => {
+  const token = req.query.view_token;
+  if (!token) return res.status(403).send("Falta token de acceso temporal. El enlace puede haber expirado.");
+
+  try {
+    const { rows } = await db.query("SELECT * FROM single_use_tokens WHERE token = $1 AND expires_at > NOW()", [token]);
+    if (rows.length === 0) {
+      return res.status(403).send("Enlace expirado o ya utilizado.");
+    }
+    
+    // Eliminar el token para que no se pueda usar de nuevo (consumo único)
+    await db.query("DELETE FROM single_use_tokens WHERE token = $1", [token]);
+    next();
+  } catch (error) {
+    console.error("Error verificando token único:", error);
+    return res.status(500).send("Error interno de validación");
+  }
+};
+
 module.exports = {
   verificarAuth,
   verificarRol,
   verificarPermisos,
   authOpcional,
+  verificarTokenUnico,
 };

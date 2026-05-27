@@ -22,7 +22,13 @@ pool.query(`
     token TEXT PRIMARY KEY,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
-`).catch(err => console.error("Error creando tabla token_blacklist:", err));
+  
+  CREATE TABLE IF NOT EXISTS single_use_tokens (
+    token TEXT PRIMARY KEY,
+    ruta_archivo TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL
+  );
+`).catch(err => console.error("Error creando tablas iniciales:", err));
 
 module.exports = {
   query: (text, params) => pool.query(text, params),

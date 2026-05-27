@@ -15,7 +15,7 @@ db.query("SELECT NOW()", (err, res) => {
 });
 
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
-const { verificarAuth } = require("./middleware/auth");
+const { verificarAuth, verificarTokenUnico } = require("./middleware/auth");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -32,8 +32,8 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Servir archivos estáticos (Documentos de préstamos) con protección
-app.use('/api/uploads', verificarAuth, express.static(path.join(__dirname, '../uploads')));
+// Servir archivos estáticos (Documentos de préstamos) con token de único uso
+app.use('/api/uploads', verificarTokenUnico, express.static(path.join(__dirname, '../uploads')));
 
 // Middleware
 app.use(helmet()); // Seguridad

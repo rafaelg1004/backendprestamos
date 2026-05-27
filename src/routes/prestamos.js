@@ -100,6 +100,34 @@ router.get(
   prestamosController.obtenerDocumentos
 );
 
+// GET /api/prestamos/documentos/:docId/view-token - Obtener token de un solo uso
+router.get(
+  "/documentos/:docId/view-token",
+  async (req, res, next) => {
+    try {
+      const { docId } = req.params;
+      const db = require("../config/db");
+      const { randomUUID } = require("crypto");
+      
+      const { rows } = await db.query("SELECT ruta_archivo FROM documentos WHERE id = $1", [docId]);
+      if (rows.length === 0) return res.status(404).json({ error: "Documento no encontrado" });
+      
+      const token = randomUUID();
+      const ruta = rows[0].ruta_archivo;
+      
+      // Token válido por 2 minutos
+      await db.query(
+        "INSERT INTO single_use_tokens (token, ruta_archivo, expires_at) VALUES ($1, $2, NOW() + interval '2 minutes')",
+        [token, ruta]
+      );
+      
+      res.json({ success: true, token, ruta_archivo: ruta });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // DELETE /api/prestamos/documentos/:docId - Eliminar un documento específico
 router.delete(
   "/documentos/:docId",
