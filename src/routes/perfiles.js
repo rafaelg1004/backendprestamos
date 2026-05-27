@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const perfilesController = require('../controllers/perfilesController');
 const { handleValidationErrors, validaciones } = require('../middleware/validate');
-const { verificarAuth } = require('../middleware/auth');
+const { verificarAuth, verificarAlgunPermiso } = require('../middleware/auth');
 
 // Todas las rutas requieren autenticación
 router.use(verificarAuth);
+// Ocupan tener al menos uno de los roles principales
+router.use(verificarAlgunPermiso(['ver_prestamos', 'ver_inversiones', 'gestionar_usuarios']));
 
 // GET /api/perfiles - Listar perfiles
 router.get('/', perfilesController.obtenerPerfiles);

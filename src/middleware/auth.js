@@ -129,6 +129,27 @@ const verificarPermisos = (requiredPermisos) => {
 };
 
 /**
+ * Verifica que el usuario tenga al menos UN permiso de los necesarios
+ */
+const verificarAlgunPermiso = (requiredPermisos) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.permisos) {
+      return next(new AppError("No autenticado o sin permisos", 401, "AUTH_MISSING"));
+    }
+
+    const hasAnyPermission = requiredPermisos.some(permiso => 
+      req.user.permisos.includes(permiso)
+    );
+
+    if (!hasAnyPermission) {
+      return next(new AppError("No tiene los permisos necesarios para esta acción", 403, "FORBIDDEN"));
+    }
+
+    next();
+  };
+};
+
+/**
  * Middleware opcional - no requiere auth pero la usa si está presente
  */
 const authOpcional = async (req, res, next) => {
@@ -210,6 +231,7 @@ module.exports = {
   verificarAuth,
   verificarRol,
   verificarPermisos,
+  verificarAlgunPermiso,
   authOpcional,
   verificarTokenUnico,
 };
