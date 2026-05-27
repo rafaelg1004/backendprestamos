@@ -55,6 +55,9 @@ const verificarAuth = async (req, res, next) => {
     if (perfil) {
       req.perfil = perfil;
     }
+    
+    // Add permisos to user request
+    req.user.permisos = user.permisos || [];
 
     next();
   } catch (error) {
@@ -75,6 +78,28 @@ const verificarRol = (roles) => {
       return next(
         new AppError("No tiene permisos para esta acción", 403, "FORBIDDEN"),
       );
+    }
+
+    next();
+  };
+};
+
+/**
+ * Verifica que el usuario tenga los permisos necesarios (JSONB array)
+ */
+const verificarPermisos = (requiredPermisos) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.permisos) {
+      return next(new AppError("No autenticado o sin permisos", 401, "AUTH_MISSING"));
+    }
+
+    // Verificar que tenga TODOS los permisos requeridos
+    const hasAllPermissions = requiredPermisos.every(permiso => 
+      req.user.permisos.includes(permiso)
+    );
+
+    if (!hasAllPermissions) {
+      return next(new AppError("No tiene los permisos necesarios para esta acción", 403, "FORBIDDEN"));
     }
 
     next();
@@ -105,6 +130,8 @@ const authOpcional = async (req, res, next) => {
       const user = users[0];
 
       if (user) {
+        req.user.permisos = user.permisos || [];
+        
         const { rows: perfiles } = await db.query(
           "SELECT * FROM perfiles WHERE user_id = $1",
           [decoded.id],
@@ -126,5 +153,6 @@ const authOpcional = async (req, res, next) => {
 module.exports = {
   verificarAuth,
   verificarRol,
+  verificarPermisos,
   authOpcional,
 };

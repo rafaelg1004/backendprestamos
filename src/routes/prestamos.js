@@ -6,7 +6,7 @@ const {
   validaciones,
   body,
 } = require("../middleware/validate");
-const { verificarAuth } = require("../middleware/auth");
+const { verificarAuth, verificarPermisos } = require("../middleware/auth");
 const upload = require("../middleware/upload");
 
 // Ruta pública para consultar préstamos por cédula (sin autenticación)
@@ -19,13 +19,13 @@ router.get(
 router.use(verificarAuth);
 
 // GET /api/prestamos - Listar préstamos
-router.get("/", prestamosController.obtenerPrestamos);
+router.get("/", verificarPermisos(["ver_prestamos"]), prestamosController.obtenerPrestamos);
 
 // GET /api/prestamos/filtros - Valores para filtros
-router.get("/filtros", prestamosController.obtenerFiltros);
+router.get("/filtros", verificarPermisos(["ver_prestamos"]), prestamosController.obtenerFiltros);
 
 // GET /api/prestamos/mora/listado - Préstamos en mora
-router.get("/mora/listado", prestamosController.obtenerPrestamosMora);
+router.get("/mora/listado", verificarPermisos(["ver_reportes"]), prestamosController.obtenerPrestamosMora);
 
 // POST /api/prestamos - Crear préstamo
 router.post(

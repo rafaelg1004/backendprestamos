@@ -67,6 +67,7 @@ router.post("/login", async (req, res, next) => {
       id: user.id,
       email: user.email,
       rol: user.rol,
+      permisos: user.permisos || []
     });
 
     res.json({
@@ -77,6 +78,7 @@ router.post("/login", async (req, res, next) => {
           id: user.id,
           email: user.email,
           rol: user.rol,
+          permisos: user.permisos || [],
           nombre: perfil?.nombre_completo || user.email.split("@")[0],
         },
       },
@@ -296,28 +298,40 @@ router.post("/logout", async (req, res, next) => {
  * GET /api/auth/me
  * Obtener información del usuario actual
  */
-router.get("/me", async (req, res, next) => {
+router.get("/me", verificarAuth, async (req, res, next) => {
   try {
     // El middleware verificarAuth ya agregó req.user
     if (!req.user) {
       throw new AppError("No autenticado", 401, "AUTH_MISSING");
     }
 
-    // Obtener perfil completo
+    // Obtener perfil (si existe)
     const { rows: perfiles } = await db.query(
-      "SELECT id, nombre_completo, email, rol, telefono FROM perfiles WHERE id = $1",
+      "SELECT id, nombre_completo, telefono FROM perfiles WHERE user_id = $1",
       [req.user.id],
     );
     const perfil = perfiles[0];
 
-    if (!perfil) {
-      throw new AppError("Perfil no encontrado", 404, "PROFILE_NOT_FOUND");
+    // Obtener datos del usuario
+    const { rows: users } = await db.query(
+      "SELECT email, rol, permisos FROM users WHERE id = $1", 
+      [req.user.id]
+    );
+    const user = users[0];
+
+    if (!user) {
+      throw new AppError("Usuario no encontrado", 404, "USER_NOT_FOUND");
     }
 
     res.json({
       success: true,
       data: {
-        user: perfil,
+        user: {
+          ...user,
+          id: req.user.id,
+          nombre_completo: perfil ? perfil.nombre_completo : user.email.split('@')[0],
+          permisos: user.permisos || []
+        },
       },
     });
   } catch (error) {
@@ -396,7 +410,7 @@ router.put("/change-password", verificarAuth, async (req, res, next) => {
  */
 router.post("/create-admin", verificarAuth, async (req, res, next) => {
   try {
-    const { email, password, nombre } = req.body;
+    const { email, password, nombre, permisos } = req.body;
 
     if (!email || !password || !nombre) {
       throw new AppError(
@@ -406,10 +420,10 @@ router.post("/create-admin", verificarAuth, async (req, res, next) => {
       );
     }
 
-    // Verificar que el usuario actual es admin
-    if (req.user.rol !== "admin") {
+    // Verificar que el usuario actual tiene permiso de gestionar usuarios
+    if (!req.user.permisos || !req.user.permisos.includes("gestionar_usuarios")) {
       throw new AppError(
-        "Solo administradores pueden crear usuarios administrativos",
+        "Solo los administradores principales pueden crear usuarios",
         403,
         "FORBIDDEN",
       );
@@ -429,10 +443,12 @@ router.post("/create-admin", verificarAuth, async (req, res, next) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
+    const userPermisos = Array.isArray(permisos) ? JSON.stringify(permisos) : '[]';
+
     // Crear usuario administrativo
     const { rows: newUsers } = await db.query(
-      "INSERT INTO users (email, password, rol, created_at) VALUES ($1, $2, 'admin', NOW()) RETURNING id, email, rol, created_at",
-      [email, passwordHash],
+      "INSERT INTO users (email, password, rol, created_at, permisos) VALUES ($1, $2, 'admin', NOW(), $3::jsonb) RETURNING id, email, rol, created_at, permisos",
+      [email, passwordHash, userPermisos],
     );
 
     res.json({
@@ -451,12 +467,12 @@ router.post("/create-admin", verificarAuth, async (req, res, next) => {
  */
 router.get("/admins", verificarAuth, async (req, res, next) => {
   try {
-    if (req.user.rol !== "admin") {
-      throw new AppError("Acceso denegado", 403, "FORBIDDEN");
+    if (!req.user.permisos || !req.user.permisos.includes("gestionar_usuarios")) {
+      throw new AppError("Acceso denegado, requiere permisos de gestión de usuarios", 403, "FORBIDDEN");
     }
 
     const { rows: admins } = await db.query(
-      "SELECT id, email, rol, created_at, last_sign_in_at FROM users WHERE rol = 'admin' ORDER BY created_at DESC"
+      "SELECT id, email, rol, created_at, last_sign_in_at, permisos FROM users WHERE rol = 'admin' ORDER BY created_at DESC"
     );
 
     res.json({
@@ -474,8 +490,8 @@ router.get("/admins", verificarAuth, async (req, res, next) => {
  */
 router.delete("/admins/:id", verificarAuth, async (req, res, next) => {
   try {
-    if (req.user.rol !== "admin") {
-      throw new AppError("Acceso denegado", 403, "FORBIDDEN");
+    if (!req.user.permisos || !req.user.permisos.includes("gestionar_usuarios")) {
+      throw new AppError("Acceso denegado, requiere permisos de gestión de usuarios", 403, "FORBIDDEN");
     }
 
     const adminId = req.params.id;
@@ -498,6 +514,48 @@ router.delete("/admins/:id", verificarAuth, async (req, res, next) => {
     res.json({
       success: true,
       message: "Administrador eliminado correctamente"
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/auth/admins/:id/permisos
+ * Actualizar permisos de un usuario
+ */
+router.put("/admins/:id/permisos", verificarAuth, async (req, res, next) => {
+  try {
+    if (!req.user.permisos || !req.user.permisos.includes("gestionar_usuarios")) {
+      throw new AppError("Acceso denegado, requiere permisos de gestión de usuarios", 403, "FORBIDDEN");
+    }
+
+    const adminId = req.params.id;
+    const { permisos } = req.body;
+
+    if (!Array.isArray(permisos)) {
+      throw new AppError("Formato de permisos inválido", 400);
+    }
+
+    // Un usuario no debería quitarse sus propios permisos de gestión de usuarios para evitar bloqueo
+    if (adminId === req.user.id && !permisos.includes("gestionar_usuarios")) {
+      throw new AppError("No puedes quitarte tu propio permiso de gestionar usuarios", 400);
+    }
+
+    const userPermisos = JSON.stringify(permisos);
+
+    const { rowCount } = await db.query(
+      "UPDATE users SET permisos = $1::jsonb WHERE id = $2 AND rol = 'admin'",
+      [userPermisos, adminId]
+    );
+
+    if (rowCount === 0) {
+      throw new AppError("Usuario no encontrado", 404);
+    }
+
+    res.json({
+      success: true,
+      message: "Permisos actualizados correctamente"
     });
   } catch (error) {
     next(error);

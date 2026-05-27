@@ -303,38 +303,70 @@ const obtenerInversionistaPorCedulaPublico = asyncHandler(async (req, res) => {
 
   const inversionista = perfiles[0];
 
-  // 2. Obtener resumen desde la vista (si existe)
-  let resumen = {
-    inversion_inicial: 0,
-    capital_devuelto: 0,
-    intereses_pagados: 0,
-    capital_todavia_adeudado: 0,
-    intereses_acumulados_estimados: 0
-  };
-
-  try {
-    const { rows: vistaRes } = await db.query(
-      "SELECT * FROM vista_detalle_inversionistas WHERE id = $1",
-      [inversionista.id]
-    );
-    if (vistaRes.length > 0) {
-      // Ajustar milunidades
-      const v = vistaRes[0];
-      resumen = {
-        inversion_inicial: Math.round(v.inversion_inicial * 1000),
-        capital_devuelto: Math.round(v.capital_devuelto * 1000),
-        intereses_pagados: Math.round(v.intereses_pagados * 1000),
-        capital_todavia_adeudado: Math.round(v.capital_todavia_adeudado * 1000),
-        intereses_acumulados_estimados: Math.round((v.intereses_acumulados_estimados || 0) * 1000)
-      };
-    }
-  } catch (err) {
-    console.log("Error leyendo vista_detalle_inversionistas en portal público", err.message);
-  }
-
-  // 3. Obtener lista de inversiones activas
+  // 2. Obtener lista de inversiones activas
   const { rows: inversiones } = await db.query(
     "SELECT id, monto_invertido, tasa_interes_pactada, estado, fecha_inversion FROM inversiones WHERE inversionista_id = $1 ORDER BY fecha_inversion DESC",
+    [inversionista.id]
+  );
+
+  // 3. Obtener movimientos de este inversionista
+  const { rows: movimientos } = await db.query(
+    "SELECT inversion_id, monto_capital, monto_interes FROM movimientos WHERE perfil_id = $1 AND tipo = 'devolucion_inversion'",
+    [inversionista.id]
+  );
+
+  let inv_inicial = 0, cap_dev = 0, int_pag = 0, cap_adeud = 0, int_est = 0;
+  let suma_tasa_ponderada = 0;
+  let capital_activo_total = 0;
+
+  for (const inv of inversiones) {
+    const invInicial = parseFloat(inv.monto_invertido || 0);
+    inv_inicial += invInicial;
+
+    let cDev = 0, iPag = 0;
+    for (const mov of movimientos) {
+      if (mov.inversion_id === inv.id) {
+        cDev += parseFloat(mov.monto_capital || 0);
+        iPag += parseFloat(mov.monto_interes || 0);
+      }
+    }
+    cap_dev += cDev;
+    int_pag += iPag;
+    
+    const adeudado = (invInicial - cDev);
+    cap_adeud += adeudado;
+
+    if (inv.estado !== 'finalizada' && adeudado > 0) {
+      const tasa = parseFloat(inv.tasa_interes_pactada || 0);
+      suma_tasa_ponderada += (tasa * adeudado);
+      capital_activo_total += adeudado;
+
+      const fechaInv = new Date(inv.fecha_inversion);
+      const hoy = new Date();
+      const mesesTranscurridos = (hoy - fechaInv) / (1000 * 60 * 60 * 24 * 30.44);
+      const interesEsperado = invInicial * (tasa / 100) * mesesTranscurridos;
+      int_est += Math.max(0, interesEsperado - iPag);
+    }
+  }
+
+  const tasa_promedio = capital_activo_total > 0 ? (suma_tasa_ponderada / capital_activo_total) : 0;
+
+  const resumen = {
+    inversion_inicial: Math.round(inv_inicial),
+    capital_devuelto: Math.round(cap_dev),
+    intereses_pagados: Math.round(int_pag),
+    capital_todavia_adeudado: Math.round(cap_adeud),
+    intereses_acumulados_estimados: Math.round(int_est),
+    tasa_promedio: parseFloat(tasa_promedio.toFixed(2))
+  };
+
+  // 4. Obtener últimos pagos para el historial
+  const { rows: ultimos_pagos } = await db.query(
+    `SELECT id, fecha_operacion, monto_total, metodo_pago 
+     FROM movimientos 
+     WHERE perfil_id = $1 AND tipo = 'devolucion_inversion' 
+     ORDER BY fecha_operacion DESC 
+     LIMIT 10`,
     [inversionista.id]
   );
 
@@ -345,7 +377,11 @@ const obtenerInversionistaPorCedulaPublico = asyncHandler(async (req, res) => {
       resumen,
       inversiones: inversiones.map(inv => ({
         ...inv,
-        monto_invertido: Math.round(inv.monto_invertido * 1000)
+        monto_invertido: Math.round(inv.monto_invertido)
+      })),
+      ultimos_pagos: ultimos_pagos.map(pago => ({
+        ...pago,
+        monto_total: Math.round(pago.monto_total)
       }))
     }
   });
