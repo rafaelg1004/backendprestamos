@@ -29,6 +29,23 @@ const verificarAuth = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
+    // Verificar si el token ha sido invalidado (logout)
+    try {
+      const { rows: blacklisted } = await db.query(
+        "SELECT token FROM token_blacklist WHERE token = $1",
+        [token]
+      );
+      if (blacklisted.length > 0) {
+        throw new AppError("Sesión cerrada previamente", 401, "AUTH_INVALIDATED");
+      }
+    } catch (dbErr) {
+      // Si la tabla no existe aún o hay otro error, logueamos pero permitimos pasar
+      // para no romper la app si la base de datos no está actualizada.
+      if (dbErr.code !== '42P01') { // 42P01 is undefined_table
+        console.error("Error comprobando blacklist:", dbErr);
+      }
+    }
+
     // Verificar token JWT
     const decoded = verifyToken(token);
 
@@ -123,6 +140,20 @@ const authOpcional = async (req, res, next) => {
     }
 
     const token = authHeader.split(" ")[1];
+    
+    // Verificar blacklist
+    try {
+      const { rows: blacklisted } = await db.query(
+        "SELECT token FROM token_blacklist WHERE token = $1",
+        [token]
+      );
+      if (blacklisted.length > 0) {
+        return next(); // Tratamos como si no hubiera token si está invalidado
+      }
+    } catch (dbErr) {
+      if (dbErr.code !== '42P01') console.error("Error comprobando blacklist:", dbErr);
+    }
+
     const decoded = verifyToken(token);
 
     if (decoded) {

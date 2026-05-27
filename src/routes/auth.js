@@ -283,11 +283,21 @@ router.post("/register-admin", async (req, res, next) => {
  */
 router.post("/logout", async (req, res, next) => {
   try {
-    // JWT no requiere logout en servidor
-    // El cliente simplemente debe eliminar el token
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        // Ignoramos errores de clave duplicada en caso de que ya se haya invalidado
+        await db.query(
+          "INSERT INTO token_blacklist (token) VALUES ($1) ON CONFLICT (token) DO NOTHING",
+          [token]
+        );
+      }
+    }
+    
     res.json({
       success: true,
-      message: "Sesión cerrada exitosamente",
+      message: "Sesión cerrada e invalidada exitosamente",
     });
   } catch (error) {
     next(error);

@@ -16,6 +16,14 @@ pool.on("error", (err) => {
   process.exit(-1);
 });
 
+// Inicializar tabla de blacklist si no existe
+pool.query(`
+  CREATE TABLE IF NOT EXISTS token_blacklist (
+    token TEXT PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`).catch(err => console.error("Error creando tabla token_blacklist:", err));
+
 module.exports = {
   query: (text, params) => pool.query(text, params),
   connect: () => pool.connect(),

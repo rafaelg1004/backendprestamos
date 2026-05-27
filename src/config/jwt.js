@@ -3,7 +3,7 @@ require("dotenv").config();
 
 const JWT_SECRET =
   process.env.JWT_SECRET || "your-jwt-secret-change-in-production";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRATION || "24h";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRATION || "4h";
 
 /**
  * Generar token JWT
