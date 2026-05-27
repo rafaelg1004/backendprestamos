@@ -12,7 +12,12 @@ const { AppError } = require("./errorHandler");
  */
 const verificarAuth = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    let authHeader = req.headers.authorization;
+    
+    // Permitir token por query string para descargas/visualización de archivos
+    if (!authHeader && req.query.token) {
+      authHeader = `Bearer ${req.query.token}`;
+    }
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       throw new AppError(
