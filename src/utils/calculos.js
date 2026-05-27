@@ -31,8 +31,8 @@ function calcularDiasMora(fechaVencimiento) {
  */
 function calcularInteresSimple(montoPrincipal, tasaInteresMensual, meses) {
   const interes = montoPrincipal * (tasaInteresMensual / 100) * meses;
-  // Redondear hacia arriba al millar más cercano (a favor del admin)
-  return Math.ceil(interes / 1000) * 1000;
+  // Redondear hacia arriba a los 100 pesos más cercanos (a favor del admin)
+  return Math.ceil(interes / 100) * 100;
 }
 
 /**
@@ -45,8 +45,8 @@ function calcularInteresSimple(montoPrincipal, tasaInteresMensual, meses) {
 function calcularMora(montoPrincipal, tasaMoraDiaria, diasMora) {
   if (diasMora <= 0) return 0;
   const mora = montoPrincipal * (tasaMoraDiaria / 100) * diasMora;
-  // Redondear hacia arriba al millar más cercano
-  return Math.ceil(mora / 1000) * 1000;
+  // Redondear hacia arriba a los 100 pesos más cercanos
+  return Math.ceil(mora / 100) * 100;
 }
 
 /**
@@ -294,8 +294,8 @@ function calcularInteresRotativo(saldoCapital, tasaInteresMensual, diasTranscurr
   // La tasa mensual se divide por 30 para obtener tasa diaria
   const tasaDiaria = (tasaInteresMensual / 100) / 30;
   const interes = saldoCapital * tasaDiaria * diasTranscurridos;
-  // Redondear hacia arriba al millar más cercano a favor del admin
-  return Math.ceil(interes / 1000) * 1000;
+  // Redondear hacia arriba a los 100 pesos más cercanos a favor del admin
+  return Math.ceil(interes / 100) * 100;
 }
 
 module.exports = {
