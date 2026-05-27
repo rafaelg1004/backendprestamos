@@ -1,8 +1,50 @@
 const db = require("../config/db");
 const { asyncHandler, AppError } = require("../middleware/errorHandler");
+const path = require("path");
 const {
   calcularMesesTranscurridos,
 } = require("../utils/calculos");
+
+/**
+ * Middleware para estructurar carpetas de capturas de inversión
+ */
+const prepararCarpetaInversion = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  const { rows: [inv] } = await db.query(
+    `SELECT pref.nombre_completo, i.fecha_inversion 
+     FROM inversiones i 
+     JOIN perfiles pref ON i.inversionista_id = pref.id 
+     WHERE i.id = $1`,
+    [id]
+  );
+
+  if (!inv) {
+    throw new AppError("Inversión no encontrada", 404);
+  }
+
+  const nombreLimpio = inv.nombre_completo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "_")
+    .substring(0, 30);
+  
+  const fechaObj = inv.fecha_inversion instanceof Date 
+    ? inv.fecha_inversion 
+    : new Date(inv.fecha_inversion);
+
+  const año = fechaObj.getFullYear();
+  const mes = fechaObj.getMonth();
+  const semestre = mes < 6 ? 'Semestre_1' : 'Semestre_2';
+  const fechaStr = fechaObj.toISOString().split('T')[0];
+
+  req.uploadSubFolder = path.join(
+    String(año),
+    semestre,
+    `${nombreLimpio}_${fechaStr}`
+  );
+  next();
+});
 
 /**
  * Crear una nueva inversión
@@ -228,16 +270,23 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
     }
 
     // 3. Registrar Movimiento físico
+    let rutaFinal = null;
+    if (req.file) {
+      rutaFinal = req.uploadSubFolder 
+        ? path.join(req.uploadSubFolder, req.file.filename)
+        : req.file.filename;
+    }
+
     const { rows: [movimiento] } = await client.query(
       `INSERT INTO movimientos (
         perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
-        monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id, url_captura
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         inversion.inversionista_id, id, cuenta_id, monto_total, 
         monto_capital || 0, monto_interes || 0, 
         "devolucion_inversion", metodo_pago || "transferencia", 
-        new Date().toISOString(), notas, req.user ? req.user.id : null
+        new Date().toISOString(), notas, req.user ? req.user.id : null, rutaFinal
       ]
     );
 
@@ -394,5 +443,6 @@ module.exports = {
   actualizarInversion,
   registrarPagoInversionista,
   eliminarInversion,
-  obtenerInversionistaPorCedulaPublico
+  obtenerInversionistaPorCedulaPublico,
+  prepararCarpetaInversion
 };

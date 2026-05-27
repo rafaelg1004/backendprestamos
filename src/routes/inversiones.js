@@ -3,6 +3,7 @@ const router = express.Router();
 const inversionesController = require('../controllers/inversionesController');
 const { handleValidationErrors, validaciones } = require('../middleware/validate');
 const { verificarAuth, verificarPermisos } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 // Ruta PÚBLICA - Debe ir ANTES de aplicar el middleware verificarAuth
 router.get("/publico/cedula/:cedula", inversionesController.obtenerInversionistaPorCedulaPublico);
@@ -44,6 +45,8 @@ router.put(
 // POST /api/inversiones/:id/pagar - Registrar pago a inversionista (Interés/Capital)
 router.post(
   '/:id/pagar',
+  inversionesController.prepararCarpetaInversion,
+  upload.single('captura'),
   [
     validaciones.uuid('id'),
     validaciones.montoPositivo('monto_total'),
