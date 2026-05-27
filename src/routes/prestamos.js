@@ -137,6 +137,8 @@ router.delete(
 // POST /api/prestamos/:id/pagos - Registrar pago libre (capital e intereses)
 router.post(
   "/:id/pagos",
+  prestamosController.prepararCarpetaPrestamo,
+  upload.single('captura'),
   [validaciones.uuid("id"), handleValidationErrors],
   prestamosController.registrarPagoLibre
 );

@@ -89,6 +89,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     condonar_intereses
   } = req.body;
 
+  let parsedDistribucionCapital = typeof distribucion_capital === 'string' ? JSON.parse(distribucion_capital) : distribucion_capital;
+  let parsedDistribucionIntereses = typeof distribucion_intereses === 'string' ? JSON.parse(distribucion_intereses) : distribucion_intereses;
+  
+  // Opcional: boolean string a boolean
+  const isCondonar = String(condonar_intereses) === 'true';
+
   if (!cuenta_id) {
     throw new AppError("Debes seleccionar una cuenta para recibir el pago", 400);
   }
@@ -125,7 +131,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     const interesTotalDeuda = Math.round(parseFloat(prestamo.interes_acumulado || 0) + interesGeneradoPeriodo);
 
     let nuevoInteresAcumulado = interesTotalDeuda - interesAPagar;
-    if (condonar_intereses) {
+    if (isCondonar) {
       nuevoInteresAcumulado = 0;
     } else if (nuevoInteresAcumulado < 0) {
       nuevoInteresAcumulado = 0;
@@ -154,17 +160,25 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
 
     // Registrar movimientos
     const cuentaCapital = cuenta_id;
+    
+    let rutaFinal = null;
+    const path = require('path');
+    if (req.file) {
+      rutaFinal = req.uploadSubFolder 
+        ? path.join(req.uploadSubFolder, req.file.filename)
+        : req.file.filename;
+    }
 
     if (capitalAPagar > 0) {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id, url_captura
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           prestamo.cliente_id, prestamo.id, cuentaCapital, capitalAPagar, capitalAPagar, 0,
           'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString(),
-          req.user ? req.user.id : null
+          req.user ? req.user.id : null, rutaFinal
         ]
       );
     }
@@ -173,18 +187,18 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id, url_captura
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           prestamo.cliente_id, prestamo.id, null, interesAPagar, 0, interesAPagar,
           'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString(),
-          req.user ? req.user.id : null
+          req.user ? req.user.id : null, rutaFinal
         ]
       );
     }
 
-    if (distribucion_capital && Array.isArray(distribucion_capital)) {
-      for (const dist of distribucion_capital) {
+      if (parsedDistribucionCapital && parsedDistribucionCapital.length > 0) {
+        for (const dist of parsedDistribucionCapital) {
         const montoDistCap = Math.round(parseFloat(dist.monto));
         if (montoDistCap > 0) {
           await client.query(
@@ -195,9 +209,9 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       }
     }
 
-    if (distribucion_intereses && Array.isArray(distribucion_intereses)) {
+    if (interesAPagar > 0 && parsedDistribucionIntereses && parsedDistribucionIntereses.length > 0) {
       let sumaInteresesDistribuidos = 0;
-      for (const dist of distribucion_intereses) {
+      for (const dist of parsedDistribucionIntereses) {
         const montoDist = Math.round(parseFloat(dist.monto));
         if (montoDist > 0) {
           sumaInteresesDistribuidos += montoDist;
