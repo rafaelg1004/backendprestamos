@@ -15,6 +15,7 @@ db.query("SELECT NOW()", (err, res) => {
 });
 
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
+const { verificarAuth } = require("./middleware/auth");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
