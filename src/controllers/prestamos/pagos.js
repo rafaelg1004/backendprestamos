@@ -85,7 +85,8 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     monto_capital,
     monto_interes,
     distribucion_capital, 
-    distribucion_intereses 
+    distribucion_intereses,
+    condonar_intereses
   } = req.body;
 
   if (!cuenta_id) {
@@ -105,8 +106,8 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     throw new AppError("Este préstamo ya está pagado en su totalidad", 400);
   }
 
-  const capitalAPagar = parseFloat(monto_capital) || 0;
-  const interesAPagar = parseFloat(monto_interes) || 0;
+  const capitalAPagar = Math.round(parseFloat(monto_capital) || 0);
+  const interesAPagar = Math.round(parseFloat(monto_interes) || 0);
   const totalPago = capitalAPagar + interesAPagar;
 
   if (totalPago <= 0) {
@@ -121,12 +122,17 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     const { calcularDiasTranscurridos, calcularInteresRotativo } = require("../../utils/calculos");
     const diasTranscurridos = calcularDiasTranscurridos(prestamo.fecha_ultimo_corte || prestamo.fecha_inicio);
     const interesGeneradoPeriodo = calcularInteresRotativo(prestamo.saldo_capital, prestamo.tasa_interes_mensual, diasTranscurridos);
-    const interesTotalDeuda = parseFloat(prestamo.interes_acumulado || 0) + interesGeneradoPeriodo;
+    const interesTotalDeuda = Math.round(parseFloat(prestamo.interes_acumulado || 0) + interesGeneradoPeriodo);
 
     let nuevoInteresAcumulado = interesTotalDeuda - interesAPagar;
-    if (nuevoInteresAcumulado < 0) nuevoInteresAcumulado = 0;
+    if (condonar_intereses) {
+      nuevoInteresAcumulado = 0;
+    } else if (nuevoInteresAcumulado < 0) {
+      nuevoInteresAcumulado = 0;
+    }
+    nuevoInteresAcumulado = Math.round(nuevoInteresAcumulado);
 
-    let nuevoSaldoCapital = parseFloat(prestamo.saldo_capital) - capitalAPagar;
+    let nuevoSaldoCapital = Math.round(parseFloat(prestamo.saldo_capital) - capitalAPagar);
     if (nuevoSaldoCapital < 0) nuevoSaldoCapital = 0;
 
     // Actualizamos el préstamo
@@ -177,10 +183,11 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
 
     if (distribucion_capital && Array.isArray(distribucion_capital)) {
       for (const dist of distribucion_capital) {
-        if (parseFloat(dist.monto) > 0) {
+        const montoDistCap = Math.round(parseFloat(dist.monto));
+        if (montoDistCap > 0) {
           await client.query(
             "UPDATE prestamo_fondos SET capital_devuelto = COALESCE(capital_devuelto, 0) + $1 WHERE prestamo_id = $2 AND inversion_id = $3",
-            [parseFloat(dist.monto), prestamo.id, dist.inversion_id]
+            [montoDistCap, prestamo.id, dist.inversion_id]
           );
         }
       }
@@ -189,7 +196,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     if (distribucion_intereses && Array.isArray(distribucion_intereses)) {
       let sumaInteresesDistribuidos = 0;
       for (const dist of distribucion_intereses) {
-        const montoDist = parseFloat(dist.monto);
+        const montoDist = Math.round(parseFloat(dist.monto));
         if (montoDist > 0) {
           sumaInteresesDistribuidos += montoDist;
           
@@ -226,7 +233,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       }
 
       // Ganancia residual (remnant) para la Billetera del Admin
-      const gananciaAdmin = interesAPagar - sumaInteresesDistribuidos;
+      const gananciaAdmin = Math.round(interesAPagar - sumaInteresesDistribuidos);
       if (gananciaAdmin > 0) {
         // Enviar a la Billetera de Ganancias Admin
         const { rows: adminCuenta } = await client.query(
