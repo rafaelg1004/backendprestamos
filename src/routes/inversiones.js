@@ -4,6 +4,9 @@ const inversionesController = require('../controllers/inversionesController');
 const { handleValidationErrors, validaciones } = require('../middleware/validate');
 const { verificarAuth } = require('../middleware/auth');
 
+// Ruta PÚBLICA - Debe ir ANTES de aplicar el middleware verificarAuth
+router.get("/publico/cedula/:cedula", inversionesController.obtenerInversionistaPorCedulaPublico);
+
 // Todas las rutas requieren autenticación
 router.use(verificarAuth);
 

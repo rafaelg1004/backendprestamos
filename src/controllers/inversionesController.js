@@ -280,6 +280,77 @@ const eliminarInversion = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Eliminada" });
 });
 
+/**
+ * Obtener detalle público del inversionista por cédula
+ * GET /api/inversiones/publico/cedula/:cedula
+ */
+const obtenerInversionistaPorCedulaPublico = asyncHandler(async (req, res) => {
+  const { cedula } = req.params;
+
+  if (!cedula) {
+    throw new AppError("La cédula es requerida", 400);
+  }
+
+  // 1. Verificar si el inversionista existe
+  const { rows: perfiles } = await db.query(
+    "SELECT id, nombre_completo, telefono FROM perfiles WHERE identificacion = $1 AND rol = 'inversionista'",
+    [cedula]
+  );
+
+  if (perfiles.length === 0) {
+    throw new AppError("No se encontró ningún inversionista con esta cédula", 404);
+  }
+
+  const inversionista = perfiles[0];
+
+  // 2. Obtener resumen desde la vista (si existe)
+  let resumen = {
+    inversion_inicial: 0,
+    capital_devuelto: 0,
+    intereses_pagados: 0,
+    capital_todavia_adeudado: 0,
+    intereses_acumulados_estimados: 0
+  };
+
+  try {
+    const { rows: vistaRes } = await db.query(
+      "SELECT * FROM vista_detalle_inversionistas WHERE id = $1",
+      [inversionista.id]
+    );
+    if (vistaRes.length > 0) {
+      // Ajustar milunidades
+      const v = vistaRes[0];
+      resumen = {
+        inversion_inicial: Math.round(v.inversion_inicial * 1000),
+        capital_devuelto: Math.round(v.capital_devuelto * 1000),
+        intereses_pagados: Math.round(v.intereses_pagados * 1000),
+        capital_todavia_adeudado: Math.round(v.capital_todavia_adeudado * 1000),
+        intereses_acumulados_estimados: Math.round((v.intereses_acumulados_estimados || 0) * 1000)
+      };
+    }
+  } catch (err) {
+    console.log("Error leyendo vista_detalle_inversionistas en portal público", err.message);
+  }
+
+  // 3. Obtener lista de inversiones activas
+  const { rows: inversiones } = await db.query(
+    "SELECT id, monto_invertido, tasa_interes_pactada, estado, fecha_inversion FROM inversiones WHERE inversionista_id = $1 ORDER BY fecha_inversion DESC",
+    [inversionista.id]
+  );
+
+  res.json({
+    success: true,
+    data: {
+      perfil: inversionista,
+      resumen,
+      inversiones: inversiones.map(inv => ({
+        ...inv,
+        monto_invertido: Math.round(inv.monto_invertido * 1000)
+      }))
+    }
+  });
+});
+
 module.exports = {
   crearInversion,
   obtenerInversiones,
@@ -287,4 +358,5 @@ module.exports = {
   actualizarInversion,
   registrarPagoInversionista,
   eliminarInversion,
+  obtenerInversionistaPorCedulaPublico
 };

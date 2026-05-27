@@ -445,4 +445,63 @@ router.post("/create-admin", verificarAuth, async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/auth/admins
+ * Obtener lista de usuarios administradores
+ */
+router.get("/admins", verificarAuth, async (req, res, next) => {
+  try {
+    if (req.user.rol !== "admin") {
+      throw new AppError("Acceso denegado", 403, "FORBIDDEN");
+    }
+
+    const { rows: admins } = await db.query(
+      "SELECT id, email, rol, created_at, last_sign_in_at FROM users WHERE rol = 'admin' ORDER BY created_at DESC"
+    );
+
+    res.json({
+      success: true,
+      data: admins,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/auth/admins/:id
+ * Eliminar un usuario administrador
+ */
+router.delete("/admins/:id", verificarAuth, async (req, res, next) => {
+  try {
+    if (req.user.rol !== "admin") {
+      throw new AppError("Acceso denegado", 403, "FORBIDDEN");
+    }
+
+    const adminId = req.params.id;
+
+    if (adminId === req.user.id) {
+      throw new AppError("No puedes eliminar tu propio usuario", 400);
+    }
+
+    // Verificar si es el último admin
+    const { rows: count } = await db.query("SELECT COUNT(*) FROM users WHERE rol = 'admin'");
+    if (parseInt(count[0].count) <= 1) {
+      throw new AppError("No puedes eliminar al último administrador", 400);
+    }
+
+    const { rowCount } = await db.query("DELETE FROM users WHERE id = $1 AND rol = 'admin'", [adminId]);
+    if (rowCount === 0) {
+      throw new AppError("Administrador no encontrado", 404);
+    }
+
+    res.json({
+      success: true,
+      message: "Administrador eliminado correctamente"
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
