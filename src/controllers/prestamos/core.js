@@ -105,8 +105,8 @@ const crearPrestamo = asyncHandler(async (req, res) => {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-          monto_interes, monto_mora, tipo, fecha_operacion
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          monto_interes, monto_mora, tipo, fecha_operacion, usuario_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           cliente_id,
           prestamo.id,
@@ -117,6 +117,7 @@ const crearPrestamo = asyncHandler(async (req, res) => {
           0,
           "entrega_prestamo",
           new Date().toISOString(),
+          req.user ? req.user.id : null
         ],
       );
     }

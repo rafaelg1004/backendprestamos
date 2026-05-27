@@ -28,9 +28,9 @@ const crearInversion = asyncHandler(async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO movimientos (perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, monto_interes, tipo, fecha_operacion) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [inversionista_id, inversionRes.id, cuenta_id, monto_invertido, monto_invertido, 0, "recibo_inversion", new Date().toISOString()]
+      `INSERT INTO movimientos (perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, monto_interes, tipo, fecha_operacion, usuario_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [inversionista_id, inversionRes.id, cuenta_id, monto_invertido, monto_invertido, 0, "recibo_inversion", new Date().toISOString(), req.user ? req.user.id : null]
     );
 
     await client.query("COMMIT");
@@ -231,13 +231,13 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
     const { rows: [movimiento] } = await client.query(
       `INSERT INTO movimientos (
         perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
-        monto_interes, tipo, metodo_pago, fecha_operacion, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         inversion.inversionista_id, id, cuenta_id, monto_total, 
         monto_capital || 0, monto_interes || 0, 
         "devolucion_inversion", metodo_pago || "transferencia", 
-        new Date().toISOString(), notas
+        new Date().toISOString(), notas, req.user ? req.user.id : null
       ]
     );
 

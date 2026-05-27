@@ -159,11 +159,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           prestamo.cliente_id, prestamo.id, cuentaCapital, capitalAPagar, capitalAPagar, 0,
-          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString()
+          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString(),
+          req.user ? req.user.id : null
         ]
       );
     }
@@ -172,11 +173,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
       await client.query(
         `INSERT INTO movimientos (
           perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          monto_interes, tipo, metodo_pago, referencia_pago, notas, fecha_operacion, usuario_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           prestamo.cliente_id, prestamo.id, null, interesAPagar, 0, interesAPagar,
-          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString()
+          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString(),
+          req.user ? req.user.id : null
         ]
       );
     }
@@ -220,11 +222,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
               await client.query(
                 `INSERT INTO movimientos (
                   perfil_id, prestamo_id, inversion_id, cuenta_id, monto_total, monto_capital, 
-                  monto_interes, tipo, metodo_pago, notas, fecha_operacion
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                  monto_interes, tipo, metodo_pago, notas, fecha_operacion, usuario_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                 [
                   invRows[0].inversionista_id, prestamo.id, dist.inversion_id, cuentaInv[0].id, montoDist, 0,
-                  montoDist, 'ganancia_interes', 'sistema', 'Ganancia por intereses de inversión', new Date().toISOString()
+                  montoDist, 'ganancia_interes', 'sistema', 'Ganancia por intereses de inversión', new Date().toISOString(),
+                  req.user ? req.user.id : null
                 ]
               );
             }
@@ -245,11 +248,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
           await client.query(
             `INSERT INTO movimientos (
               perfil_id, prestamo_id, cuenta_id, monto_total, monto_capital, 
-              monto_interes, tipo, metodo_pago, notas, fecha_operacion
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+              monto_interes, tipo, metodo_pago, notas, fecha_operacion, usuario_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
               adminCuenta[0].perfil_id, prestamo.id, adminCuenta[0].id, gananciaAdmin, 0,
-              gananciaAdmin, 'ganancia_interes', 'sistema', 'Spread administrativo', new Date().toISOString()
+              gananciaAdmin, 'ganancia_interes', 'sistema', 'Spread administrativo', new Date().toISOString(),
+              req.user ? req.user.id : null
             ]
           );
         }

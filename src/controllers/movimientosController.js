@@ -121,8 +121,8 @@ const crearMovimiento = asyncHandler(async (req, res) => {
       `INSERT INTO movimientos (
         perfil_id, prestamo_id, inversion_id, monto_total, monto_capital, 
         monto_interes, monto_mora, metodo_pago, referencia_pago, 
-        url_captura, tipo, fecha_operacion, notas
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+        url_captura, tipo, fecha_operacion, notas, usuario_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
       RETURNING *`,
       [
         perfil_id,
@@ -138,6 +138,7 @@ const crearMovimiento = asyncHandler(async (req, res) => {
         tipo,
         new Date().toISOString(),
         notas || null,
+        req.user ? req.user.id : null
       ]
     );
 
@@ -213,11 +214,16 @@ const obtenerMovimientos = asyncHandler(async (req, res) => {
         'monto_invertido', inv.monto_invertido,
         'estado', inv.estado
       ) as inversion,
+      json_build_object(
+        'id', u.id,
+        'email', u.email
+      ) as registrado_por,
       COUNT(*) OVER() as total_count
     FROM movimientos m
     JOIN perfiles p ON m.perfil_id = p.id
     LEFT JOIN prestamos pr ON m.prestamo_id = pr.id
     LEFT JOIN inversiones inv ON m.inversion_id = inv.id
+    LEFT JOIN users u ON m.usuario_id = u.id
     WHERE 1=1
   `;
   const queryParams = [];
