@@ -203,7 +203,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
         if (montoDistCap > 0) {
           await client.query(
             "UPDATE prestamo_fondos SET capital_devuelto = COALESCE(capital_devuelto, 0) + $1 WHERE prestamo_id = $2 AND inversion_id = $3",
-            [montoDistCap, prestamo.id, dist.inversion_id]
+            [montoDistCap, prestamo.id, dist.inversion_id || null]
           );
         }
       }
@@ -218,13 +218,13 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
           
           await client.query(
             "UPDATE prestamo_fondos SET interes_devuelto = COALESCE(interes_devuelto, 0) + $1 WHERE prestamo_id = $2 AND inversion_id = $3",
-            [montoDist, prestamo.id, dist.inversion_id]
+            [montoDist, prestamo.id, dist.inversion_id || null]
           );
 
           // Sumar al saldo de la billetera ficticia del inversionista
           const { rows: invRows } = await client.query(
             "SELECT inversionista_id FROM inversiones WHERE id = $1",
-            [dist.inversion_id]
+            [dist.inversion_id || null]
           );
           if (invRows.length > 0) {
             const { rows: cuentaInv } = await client.query(
@@ -239,7 +239,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
                   monto_interes, tipo, metodo_pago, notas, fecha_operacion, usuario_id
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                 [
-                  invRows[0].inversionista_id, prestamo.id, dist.inversion_id, cuentaInv[0].id, montoDist, 0,
+                  invRows[0].inversionista_id, prestamo.id, dist.inversion_id || null, cuentaInv[0].id, montoDist, 0,
                   montoDist, 'ganancia_interes', 'sistema', 'Ganancia por intereses de inversión', new Date().toISOString(),
                   req.user ? req.user.id : null
                 ]
