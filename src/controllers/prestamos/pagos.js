@@ -68,7 +68,9 @@ const pagarPrestamo = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    throw new AppError("Error procesando liquidación: " + error.message, 500);
+    console.error("Error en pagarPrestamo:", error);
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message || "Error procesando liquidación", error.statusCode || 500, error.code);
   } finally {
     client.release();
   }
@@ -282,7 +284,9 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    throw new AppError("Error procesando pago: " + error.message, 500);
+    console.error("Error en registrarPagoLibre:", error);
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message || "Error procesando pago", error.statusCode || 500, error.code);
   } finally {
     client.release();
   }
