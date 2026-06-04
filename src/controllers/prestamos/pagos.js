@@ -242,7 +242,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                 [
                   invRows[0].inversionista_id, prestamo.id, dist.inversion_id || null, cuentaInv[0].id, montoDist, 0,
-                  montoDist, 'ganancia_interes', 'sistema', 'Ganancia por intereses de inversión', new Date().toISOString(),
+                  montoDist, 'ganancia_interes', null, 'Ganancia por intereses de inversión', new Date().toISOString(),
                   req.user ? req.user.id : null
                 ]
               );
@@ -268,7 +268,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
               adminCuenta[0].perfil_id, prestamo.id, adminCuenta[0].id, gananciaAdmin, 0,
-              gananciaAdmin, 'ganancia_interes', 'sistema', 'Spread administrativo', new Date().toISOString(),
+              gananciaAdmin, 'ganancia_interes', null, 'Spread administrativo', new Date().toISOString(),
               req.user ? req.user.id : null
             ]
           );
