@@ -309,20 +309,64 @@ const obtenerResumenPerfil = asyncHandler(async (req, res) => {
       ),
     };
   } else if (perfil.rol === "inversionista") {
-    // Obtener estadísticas de inversiones usando pg
+    // 2. Obtener lista de inversiones activas
     const { rows: inversiones } = await db.query(
-      "SELECT estado, monto_invertido FROM inversiones WHERE inversionista_id = $1",
-      [id],
+      "SELECT id, monto_invertido, tasa_interes_pactada, estado, fecha_inversion FROM inversiones WHERE inversionista_id = $1 ORDER BY fecha_inversion DESC",
+      [id]
     );
+
+    // 3. Obtener movimientos de este inversionista
+    const { rows: movimientos } = await db.query(
+      "SELECT inversion_id, monto_capital, monto_interes FROM movimientos WHERE perfil_id = $1 AND tipo = 'devolucion_inversion'",
+      [id]
+    );
+
+    let inv_inicial = 0, cap_dev = 0, int_pag = 0, cap_adeud = 0, int_est = 0;
+    let suma_tasa_ponderada = 0;
+    let capital_activo_total = 0;
+
+    for (const inv of inversiones) {
+      const invInicial = parseFloat(inv.monto_invertido || 0);
+      inv_inicial += invInicial;
+
+      let cDev = 0, iPag = 0;
+      for (const mov of movimientos) {
+        if (mov.inversion_id === inv.id) {
+          cDev += parseFloat(mov.monto_capital || 0);
+          iPag += parseFloat(mov.monto_interes || 0);
+        }
+      }
+      cap_dev += cDev;
+      int_pag += iPag;
+      
+      const adeudado = (invInicial - cDev);
+      cap_adeud += adeudado;
+
+      if (inv.estado !== 'finalizada' && adeudado > 0) {
+        const tasa = parseFloat(inv.tasa_interes_pactada || 0);
+        suma_tasa_ponderada += (tasa * adeudado);
+        capital_activo_total += adeudado;
+
+        const fechaInv = new Date(inv.fecha_inversion);
+        const hoy = new Date();
+        const mesesTranscurridos = (hoy - fechaInv) / (1000 * 60 * 60 * 24 * 30.44);
+        const interesEsperado = invInicial * (tasa / 100) * mesesTranscurridos;
+        int_est += Math.max(0, interesEsperado - iPag);
+      }
+    }
+
+    const tasa_promedio = capital_activo_total > 0 ? (suma_tasa_ponderada / capital_activo_total) : 0;
 
     resumen = {
       totalInversiones: inversiones.length,
-      inversionesActivas: inversiones.filter((i) => i.estado === "activo")
-        .length,
-      montoTotalInvertido: inversiones.reduce(
-        (sum, i) => sum + parseFloat(i.monto_invertido),
-        0,
-      ),
+      inversionesActivas: inversiones.filter((i) => i.estado === "activo").length,
+      montoTotalInvertido: Math.round(inv_inicial),
+      inversion_inicial: Math.round(inv_inicial),
+      capital_devuelto: Math.round(cap_dev),
+      intereses_pagados: Math.round(int_pag),
+      capital_todavia_adeudado: Math.round(cap_adeud),
+      intereses_acumulados_estimados: Math.round(int_est),
+      tasa_promedio: parseFloat(tasa_promedio.toFixed(2))
     };
   }
 

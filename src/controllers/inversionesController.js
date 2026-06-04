@@ -99,6 +99,16 @@ const crearInversion = asyncHandler(async (req, res) => {
  * Listar inversiones
  */
 const obtenerInversiones = asyncHandler(async (req, res) => {
+  const { inversionista_id } = req.query;
+  
+  let whereClause = "";
+  let queryParams = [];
+  
+  if (inversionista_id) {
+    whereClause = "WHERE i.inversionista_id = $1";
+    queryParams.push(inversionista_id);
+  }
+
   const { rows } = await db.query(`
     SELECT i.*, 
       json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'email', p.email) as inversionista,
@@ -115,8 +125,9 @@ const obtenerInversiones = asyncHandler(async (req, res) => {
       ) as capital_devuelto
     FROM inversiones i
     JOIN perfiles p ON i.inversionista_id = p.id
+    ${whereClause}
     ORDER BY i.fecha_inversion DESC
-  `);
+  `, queryParams);
 
   const data = rows.map(inv => {
     const capitalPendiente = parseFloat(inv.monto_invertido) - parseFloat(inv.capital_devuelto);
