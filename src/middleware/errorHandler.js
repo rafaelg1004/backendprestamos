@@ -23,7 +23,7 @@ const errorHandler = (err, req, res, next) => {
   if (err.code && err.code.startsWith("22")) {
     return res.status(400).json({
       success: false,
-      error: "Error de datos inválidos",
+      error: "Error de datos inválidos: " + err.message,
       details: err.message,
     });
   }
@@ -31,7 +31,7 @@ const errorHandler = (err, req, res, next) => {
   if (err.code && err.code.startsWith("23")) {
     return res.status(400).json({
       success: false,
-      error: "Error de restricción de base de datos",
+      error: "Error de base de datos: " + err.message,
       details: err.message,
     });
   }
