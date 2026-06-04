@@ -97,10 +97,6 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
   // Opcional: boolean string a boolean
   const isCondonar = String(condonar_intereses) === 'true';
 
-  if (!cuenta_id) {
-    throw new AppError("Debes seleccionar una cuenta para recibir el pago", 400);
-  }
-
   const { rows: [prestamo] } = await db.query(
     "SELECT * FROM prestamos WHERE id = $1", 
     [id]
@@ -120,6 +116,10 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
 
   if (totalPago <= 0) {
     throw new AppError("El monto del pago debe ser mayor a 0", 400);
+  }
+
+  if (capitalAPagar > 0 && !cuenta_id) {
+    throw new AppError("Debes seleccionar una cuenta para recibir el pago a capital", 400);
   }
 
   const client = await db.pool.connect();
