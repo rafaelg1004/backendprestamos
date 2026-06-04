@@ -114,7 +114,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
   const interesAPagar = Math.round(parseFloat(monto_interes) || 0);
   const totalPago = capitalAPagar + interesAPagar;
 
-  if (totalPago <= 0) {
+  if (totalPago <= 0 && !isCondonar) {
     throw new AppError("El monto del pago debe ser mayor a 0", 400);
   }
 
