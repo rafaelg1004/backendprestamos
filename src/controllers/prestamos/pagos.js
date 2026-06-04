@@ -177,7 +177,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           prestamo.cliente_id, prestamo.id, cuentaCapital, capitalAPagar, capitalAPagar, 0,
-          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a capital'), new Date().toISOString(),
+          'pago_cliente', metodo_pago || 'efectivo', referencia_pago || null, (notas || 'Abono a capital'), new Date().toISOString(),
           req.user ? req.user.id : null, rutaFinal
         ]
       );
@@ -191,7 +191,7 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           prestamo.cliente_id, prestamo.id, null, interesAPagar, 0, interesAPagar,
-          'pago_cliente', metodo_pago, referencia_pago, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString(),
+          'pago_cliente', metodo_pago || 'efectivo', referencia_pago || null, (notas || 'Abono a intereses (Billeteras virtuales)'), new Date().toISOString(),
           req.user ? req.user.id : null, rutaFinal
         ]
       );
