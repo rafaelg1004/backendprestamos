@@ -143,12 +143,12 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
     let nuevoSaldoCapital = Math.round(parseFloat(prestamo.saldo_capital) - capitalAPagar);
     if (nuevoSaldoCapital < 0) nuevoSaldoCapital = 0;
 
-    // Actualizamos el préstamo
     await client.query(
       `UPDATE prestamos 
        SET saldo_capital = $1, 
            interes_acumulado = $2, 
            fecha_ultimo_corte = $3,
+           fecha_vencimiento = $3::date + INTERVAL '1 month',
            estado = $4
        WHERE id = $5`,
       [
