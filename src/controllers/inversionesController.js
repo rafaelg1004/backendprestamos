@@ -122,7 +122,17 @@ const obtenerInversiones = asyncHandler(async (req, res) => {
         SELECT COALESCE(SUM(m.monto_capital), 0)
         FROM movimientos m
         WHERE m.inversion_id = i.id AND m.tipo = 'devolucion_inversion'
-      ) as capital_devuelto
+      ) as capital_devuelto,
+      (
+        SELECT COALESCE(SUM(m.monto_total), 0)
+        FROM movimientos m
+        WHERE m.inversion_id = i.id AND m.tipo = 'ganancia_interes'
+      ) as interes_generado,
+      (
+        SELECT COALESCE(SUM(m.monto_interes), 0)
+        FROM movimientos m
+        WHERE m.inversion_id = i.id AND m.tipo = 'devolucion_inversion'
+      ) as interes_pagado
     FROM inversiones i
     JOIN perfiles p ON i.inversionista_id = p.id
     ${whereClause}
@@ -132,9 +142,11 @@ const obtenerInversiones = asyncHandler(async (req, res) => {
   const data = rows.map(inv => {
     const capitalPendiente = parseFloat(inv.monto_invertido) - parseFloat(inv.capital_devuelto);
     const saldoDisponible = capitalPendiente - parseFloat(inv.monto_en_calle);
+    const interesDisponible = Math.max(0, parseFloat(inv.interes_generado) - parseFloat(inv.interes_pagado));
     return {
       ...inv,
-      saldo_disponible: Math.max(0, saldoDisponible)
+      saldo_disponible: Math.max(0, saldoDisponible),
+      interes_disponible: interesDisponible
     };
   });
 
