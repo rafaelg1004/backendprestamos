@@ -167,18 +167,24 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   const interesPagado = movimientos.filter(m => m.tipo === 'devolucion_inversion').reduce((s, m) => s + parseFloat(m.monto_interes), 0);
   const capitalPendiente = parseFloat(inversion.monto_invertido) - capitalPagado;
 
-  // --- Lógica de Interés (Saldos en Billetera Virtual) ---
+  // --- Lógica de Interés (Específico a la Inversión) ---
+  const interesesGenerados = movimientos.filter(m => m.tipo === 'ganancia_interes').reduce((s, m) => s + parseFloat(m.monto_interes || m.monto_total), 0);
+  const interesDisponibleEspecifico = Math.max(0, interesesGenerados - interesPagado);
+
   const ultimoPagoInteres = movimientos.find(m => m.tipo === 'devolucion_inversion' && parseFloat(m.monto_interes) > 0);
   const fechaReferencia = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion) : new Date(inversion.fecha_inversion);
   
   const hoy = new Date();
   
-  // Obtener saldo de la billetera del inversionista
+  // Obtener saldo de la billetera del inversionista para no sugerir más de lo que realmente tiene en total
   const { rows: [billetera] } = await db.query(
     "SELECT saldo_actual FROM cuentas WHERE tipo = 'billetera' AND perfil_id = $1",
     [inversion.inversionista_id]
   );
-  const interesSugerido = billetera ? parseFloat(billetera.saldo_actual) : 0;
+  const saldoBilletera = billetera ? parseFloat(billetera.saldo_actual) : 0;
+  
+  // Sugerimos el interés específico de esta inversión, pero limitado al saldo total disponible en su billetera
+  const interesSugerido = Math.min(interesDisponibleEspecifico, saldoBilletera);
 
   // --- Alerta de Pago (Nueva Función 3) ---
   const proximoPago = new Date(fechaReferencia);
