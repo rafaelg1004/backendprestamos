@@ -674,7 +674,7 @@ const obtenerFlujoCajaHistorico = asyncHandler(async (req, res) => {
  */
 const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
   const { rows: inversiones } = await db.query(
-    `SELECT i.*, 
+    `SELECT i.id, i.fecha_inversion, i.monto_invertido, i.tasa_interes_pactada, i.estado,
       json_build_object('id', p.id, 'nombre_completo', p.nombre_completo, 'telefono', p.telefono) as inversionista
     FROM inversiones i
     JOIN perfiles p ON i.inversionista_id = p.id
@@ -716,6 +716,15 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     // Parsear fecha de inversión correctamente (viene como string ISO o fecha)
     const fechaInversion = new Date(inv.fecha_inversion);
     fechaInversion.setUTCHours(0, 0, 0, 0);
+
+    // Obtener capital devuelto para calcular saldo pendiente
+    const { rows: capitalDevuelto } = await db.query(
+      `SELECT COALESCE(SUM(monto_capital), 0) as total
+       FROM movimientos 
+       WHERE inversion_id = $1 AND tipo = 'devolucion_inversion'`,
+      [inv.id]
+    );
+    const capitalPendiente = parseFloat(inv.monto_invertido) - parseFloat(capitalDevuelto[0].total);
 
     // Calcular el próximo pago (siempre el día 5)
     let mesPago, anioPago;
@@ -783,6 +792,8 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     return {
       id: inv.id,
       inversionista: inv.inversionista,
+      monto_invertido: parseFloat(inv.monto_invertido),
+      capital_pendiente: capitalPendiente,
       monto_a_pagar: montoInteres,
       fecha_pago: fechaPagoStr,
       dias_restantes: diasRestantes,
@@ -791,9 +802,9 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     };
   }));
 
-  // Filtrar: solo mostrar si no ha pagado este mes y está dentro de los próximos 15 días
+  // Mostrar TODOS los pagos pendientes (sin límite de 15 días)
   const pagosPendientes = proximosPagos
-    .filter(p => !p.ya_pago_este_mes && p.dias_restantes <= 15)
+    .filter(p => !p.ya_pago_este_mes)
     .map(p => ({ ...p, ya_pago_este_mes: undefined })); // Limpiar flag interno
 
   res.json({
