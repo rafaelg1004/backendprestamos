@@ -370,16 +370,11 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
   );
 
   const alertas = prestamosActivos.map((p) => {
-    // Calculamos la fecha en la que "debería" pagar intereses (30 días después del último corte o inicio)
-    const fechaRef = p.fecha_ultimo_corte ? new Date(p.fecha_ultimo_corte) : new Date(p.fecha_inicio);
-    const fechaVenc = new Date(fechaRef);
-    fechaVenc.setDate(fechaVenc.getDate() + 30);
+    // Usar la fecha_vencimiento real del préstamo (igual que la lista de préstamos)
+    const fechaVencimientoReal = p.fecha_vencimiento ? new Date(p.fecha_vencimiento) : null;
+    if (!fechaVencimientoReal) return null; // Ignorar préstamos sin fecha de vencimiento
 
-    // Si la fecha de vencimiento final es antes, usamos esa
-    const fechaVencFinal = p.fecha_vencimiento ? new Date(p.fecha_vencimiento) : null;
-    const proximaFechaPago = (fechaVencFinal && fechaVencFinal < fechaVenc) ? fechaVencFinal : fechaVenc;
-
-    const diasRestantes = Math.ceil((proximaFechaPago - hoy) / (1000 * 60 * 60 * 24));
+    const diasRestantes = Math.ceil((fechaVencimientoReal - hoy) / (1000 * 60 * 60 * 24));
 
     // Interés aproximado que debería al día de pago
     const tasaDiaria = parseFloat(p.tasa_interes_mensual) / 30 / 100;
@@ -394,7 +389,7 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
       monto_total_cobrar: deudaInteres + parseFloat(p.saldo_capital),
       monto_capital_pendiente: parseFloat(p.saldo_capital),
       monto_interes_pendiente: deudaInteres,
-      fecha_vencimiento: proximaFechaPago.toISOString().split("T")[0],
+      fecha_vencimiento: fechaVencimientoReal.toISOString().split("T")[0],
       dias_restantes: diasRestantes,
       nivel_alerta:
         diasRestantes <= 0
@@ -403,7 +398,7 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
             ? "urgente"
             : "proximo",
     };
-  }).filter(p => p.dias_restantes <= 15).sort((a, b) => a.dias_restantes - b.dias_restantes);
+  }).filter(p => p !== null && p.dias_restantes <= 15).sort((a, b) => a.dias_restantes - b.dias_restantes);
 
   res.json({
     success: true,
@@ -689,6 +684,9 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
 
   const hoy = new Date();
   const diaPagoFijo = 5; // Todos los pagos el día 5 de cada mes
+  
+  // Normalizar hoy a medianoche UTC para evitar problemas de timezone
+  hoy.setUTCHours(0, 0, 0, 0);
 
   const proximosPagos = await Promise.all(inversiones.map(async inv => {
     // Verificar si ya se pagó el interés del mes actual
@@ -715,42 +713,78 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
       [inv.id]
     );
     const esNuevaInversion = pagosPrevios.length === 0;
+    // Parsear fecha de inversión correctamente (viene como string ISO o fecha)
     const fechaInversion = new Date(inv.fecha_inversion);
+    fechaInversion.setUTCHours(0, 0, 0, 0);
 
-    // Calcular el próximo pago
-    let mesPago = hoy.getMonth();
-    let anioPago = hoy.getFullYear();
+    // Calcular el próximo pago (siempre el día 5)
+    let mesPago, anioPago;
 
-    if (yaPagoEsteMes) {
+    if (esNuevaInversion) {
+      // Inversión sin pagos previos
+      if (fechaInversion.getUTCDate() <= diaPagoFijo) {
+        // Creada antes o el día del pago: primer pago el 5 de este mes (si aplica) o siguiente
+        if (hoy.getUTCDate() <= diaPagoFijo && hoy.getUTCMonth() === fechaInversion.getUTCMonth() && hoy.getUTCFullYear() === fechaInversion.getUTCFullYear()) {
+          // Aún estamos a tiempo para este mes
+          mesPago = hoy.getUTCMonth();
+          anioPago = hoy.getUTCFullYear();
+        } else {
+          // Ya pasó el día 5 de este mes, primer pago el 5 del mes siguiente
+          mesPago = fechaInversion.getUTCMonth() + 1;
+          anioPago = fechaInversion.getUTCFullYear();
+          if (mesPago > 11) {
+            mesPago = 0;
+            anioPago += 1;
+          }
+        }
+      } else {
+        // Creada después del día 5: primer pago el 5 del mes QUE VIENE (ej: 10/jun -> 5/ago)
+        mesPago = fechaInversion.getUTCMonth() + 2;
+        anioPago = fechaInversion.getUTCFullYear();
+        if (mesPago > 11) {
+          mesPago = mesPago - 12;
+          anioPago += 1;
+        }
+      }
+    } else if (yaPagoEsteMes) {
       // Ya pagó este mes, el próximo es el 5 del mes siguiente
-      mesPago += 1;
+      mesPago = hoy.getUTCMonth() + 1;
+      anioPago = hoy.getUTCFullYear();
       if (mesPago > 11) {
         mesPago = 0;
         anioPago += 1;
       }
-    } else if (esNuevaInversion && fechaInversion.getDate() > diaPagoFijo) {
-      // Inversión nueva creada después del día 5: primer pago el 5 del mes SIGUIENTE AL SIGUIENTE (ej: 10/jun -> 5/ago)
-      mesPago = fechaInversion.getMonth() + 2;
-      anioPago = fechaInversion.getFullYear();
-      if (mesPago > 11) {
-        mesPago = mesPago - 12;
-        anioPago += 1;
+    } else {
+      // No es nueva y no ha pagado este mes
+      if (hoy.getUTCDate() <= diaPagoFijo) {
+        // Aún estamos antes del día 5, pago es este mes
+        mesPago = hoy.getUTCMonth();
+        anioPago = hoy.getUTCFullYear();
+      } else {
+        // Ya pasó el día 5, pago es el mes siguiente
+        mesPago = hoy.getUTCMonth() + 1;
+        anioPago = hoy.getUTCFullYear();
+        if (mesPago > 11) {
+          mesPago = 0;
+          anioPago += 1;
+        }
       }
-    } else if (hoy.getDate() > diaPagoFijo) {
-      // No ha pagado y ya pasó el día 5, el pago era este mes
-      mesPago = hoy.getMonth();
     }
 
-    const proximoPago = new Date(anioPago, mesPago, diaPagoFijo);
+    // Crear fecha UTC para cálculos correctos
+    const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo));
 
     const diasRestantes = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
     const montoInteres = parseFloat(inv.monto_invertido) * (parseFloat(inv.tasa_interes_pactada) / 100);
+
+    // Formatear fecha como YYYY-MM-DD para evitar problemas de timezone en el frontend
+    const fechaPagoStr = `${anioPago}-${String(mesPago + 1).padStart(2, '0')}-${String(diaPagoFijo).padStart(2, '0')}`;
 
     return {
       id: inv.id,
       inversionista: inv.inversionista,
       monto_a_pagar: montoInteres,
-      fecha_pago: proximoPago,
+      fecha_pago: fechaPagoStr,
       dias_restantes: diasRestantes,
       nivel_alerta: diasRestantes <= 3 ? 'urgente' : (diasRestantes <= 0 ? 'vencido' : 'proximo'),
       ya_pago_este_mes: yaPagoEsteMes
