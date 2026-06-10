@@ -183,6 +183,11 @@ const registrarPagoLibre = asyncHandler(async (req, res) => {
           req.user ? req.user.id : null, rutaFinal
         ]
       );
+
+      await client.query(
+        `UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2`,
+        [capitalAPagar, cuentaCapital]
+      );
     }
     
     if (interesAPagar > 0) {

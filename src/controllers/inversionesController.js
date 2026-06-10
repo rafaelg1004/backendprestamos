@@ -288,25 +288,59 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
         : req.file.filename;
     }
 
-    const { rows: [movimiento] } = await client.query(
-      `INSERT INTO movimientos (
-        perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
-        monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id, url_captura
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-      [
-        inversion.inversionista_id, id, cuenta_id, monto_total, 
-        monto_capital || 0, monto_interes || 0, 
-        "devolucion_inversion", metodo_pago || "transferencia", 
-        new Date().toISOString(), notas, req.user ? req.user.id : null, rutaFinal
-      ]
-    );
+    let movimiento = null;
 
-    // 3.5. Restar intereses de la Billetera Virtual (Si hay pago de intereses)
-    if (parseFloat(monto_interes || 0) > 0) {
-      await client.query(
-        "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE tipo = 'billetera' AND perfil_id = $2",
-        [parseFloat(monto_interes), inversion.inversionista_id]
+    // 3.1 Movimiento de Capital (Descuenta de la Cuenta Real)
+    if (parseFloat(monto_capital || 0) > 0) {
+      const { rows: [movCap] } = await client.query(
+        `INSERT INTO movimientos (
+          perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
+          monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id, url_captura
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        [
+          inversion.inversionista_id, id, cuenta_id, monto_capital, 
+          monto_capital, 0, 
+          "devolucion_inversion", metodo_pago || "transferencia", 
+          new Date().toISOString(), notas, req.user ? req.user.id : null, rutaFinal
+        ]
       );
+      movimiento = movCap; // Retornamos este como referencia principal
+
+      // Actualizar saldo de la cuenta real (Bancolombia, etc)
+      await client.query(
+        "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
+        [parseFloat(monto_capital), cuenta_id]
+      );
+    }
+
+    // 3.2 Movimiento de Interés (Descuenta de la Billetera Virtual)
+    if (parseFloat(monto_interes || 0) > 0) {
+      const { rows: [billetera] } = await client.query(
+        "SELECT id FROM cuentas WHERE tipo = 'billetera' AND perfil_id = $1",
+        [inversion.inversionista_id]
+      );
+
+      if (billetera) {
+        const { rows: [movInt] } = await client.query(
+          `INSERT INTO movimientos (
+            perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
+            monto_interes, tipo, metodo_pago, fecha_operacion, notas, usuario_id, url_captura
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+          [
+            inversion.inversionista_id, id, billetera.id, monto_interes, 
+            0, monto_interes, 
+            "devolucion_inversion", metodo_pago || "transferencia", 
+            new Date().toISOString(), notas, req.user ? req.user.id : null, rutaFinal
+          ]
+        );
+        if (!movimiento) movimiento = movInt;
+
+        // Restar intereses de la Billetera Virtual
+        await client.query(
+          "UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2",
+          [parseFloat(monto_interes), billetera.id]
+        );
+      }
     }
 
     // 4. Finalizar si el capital llega a cero

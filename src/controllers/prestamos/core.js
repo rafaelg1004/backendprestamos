@@ -120,6 +120,11 @@ const crearPrestamo = asyncHandler(async (req, res) => {
           req.user ? req.user.id : null
         ],
       );
+
+      await client.query(
+        `UPDATE cuentas SET saldo_actual = saldo_actual - $1 WHERE id = $2`,
+        [salida.monto, salida.cuenta_id]
+      );
     }
 
     await client.query("COMMIT");
@@ -218,7 +223,7 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
 
   if (solo_mora === "true") {
     const hoy = new Date().toISOString().split("T")[0];
-    queryText += ` AND p.fecha_vencimiento < $${paramIndex++} AND p.estado = 'activo'`;
+    queryText += ` AND (COALESCE(p.fecha_ultimo_corte, p.fecha_inicio) + INTERVAL '1 month')::date < $${paramIndex++} AND p.estado = 'activo'`;
     queryParams.push(hoy);
   }
 

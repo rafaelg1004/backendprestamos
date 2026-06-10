@@ -13,8 +13,8 @@ const obtenerPrestamosMora = asyncHandler(async (req, res) => {
       ) as cliente
     FROM prestamos p
     JOIN perfiles pref ON p.cliente_id = pref.id
-    WHERE p.fecha_vencimiento < $1 AND p.estado = 'activo'
-    ORDER BY p.fecha_vencimiento ASC`,
+    WHERE (COALESCE(p.fecha_ultimo_corte, p.fecha_inicio) + INTERVAL '1 month')::date < $1 AND p.estado = 'activo'
+    ORDER BY p.fecha_ultimo_corte ASC`,
     [hoy]
   );
 
