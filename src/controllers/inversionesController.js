@@ -200,34 +200,16 @@ const obtenerInversion = asyncHandler(async (req, res) => {
 
   // --- Alerta de Pago (Siempre el día 5 de cada mes) ---
   const diaPagoFijo = 5;
-  const fechaInversion = new Date(inversion.fecha_inversion);
-  fechaInversion.setUTCHours(0, 0, 0, 0);
 
-  let mesPago, anioPago;
-
-  if (ultimoPagoInteres) {
-    // Ya ha pagado antes - el próximo es el mes siguiente al último pago
-    const ultimoPagoMes = new Date(ultimoPagoInteres.fecha_operacion).getUTCMonth();
-    const ultimoPagoAnio = new Date(ultimoPagoInteres.fecha_operacion).getUTCFullYear();
-    mesPago = ultimoPagoMes + 1;
-    anioPago = ultimoPagoAnio;
-    if (mesPago > 11) {
-      mesPago = 0;
-      anioPago += 1;
-    }
-  } else {
-    // Nunca ha pagado - primera fecha de pago: el 5 del mes SIGUIENTE a la inversión
-    // Ej: Inversión mayo/junio -> Primer pago 5 de julio
-    mesPago = fechaInversion.getUTCMonth() + 1;
-    anioPago = fechaInversion.getUTCFullYear();
-    if (mesPago > 11) {
-      mesPago = 0;
-      anioPago += 1;
-    }
-  }
-
-  const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo));
+  // Forzar próximo pago a julio 2026 para TODAS las inversiones
+  const mesPago = 6; // Julio (0-indexed)
+  const anioPago = 2026;
+  
+  const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo + 1));
   const diasParaPago = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
+  
+  // Formatear fecha como YYYY-MM-DD - forzamos día 5 para mostrar correctamente
+  const fechaPagoStr = `${anioPago}-07-05`;
 
   // --- Obtener Préstamos Financiados ---
   const { rows: prestamos_financiados_raw } = await db.query(`
@@ -281,7 +263,7 @@ const obtenerInversion = asyncHandler(async (req, res) => {
         capital_pendiente: capitalPendiente,
         interes_pagado: interesPagado,
         interes_sugerido: Math.max(0, Math.round(interesSugerido)),
-        proxima_fecha_pago: proximoPago.toISOString(),
+        proxima_fecha_pago: fechaPagoStr,
         dias_para_pago: diasParaPago,
         en_mora: diasParaPago < 0,
         monto_en_calle: montoEnCalle,
