@@ -18,7 +18,12 @@ const obtenerResumen = asyncHandler(async (req, res) => {
       rows: [balanceVista],
     } = await db.query("SELECT * FROM vista_balance_general LIMIT 1");
 
-    if (balanceVista) {
+    // Verificar que la vista retorne datos válidos (no NULL)
+    const tieneDatosValidos = balanceVista && 
+      (parseFloat(balanceVista.total_capital_en_la_calle) > 0 ||
+       parseFloat(balanceVista.total_deuda_con_inversionistas) > 0);
+
+    if (tieneDatosValidos) {
       // Obtener estadísticas de perfiles
       const { rows: perfilesStats } = await db.query(
         "SELECT rol FROM perfiles",
