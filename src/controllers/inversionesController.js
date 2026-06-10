@@ -198,9 +198,25 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   // Sugerimos el interés específico de esta inversión, pero limitado al saldo total disponible en su billetera
   const interesSugerido = Math.min(interesDisponibleEspecifico, saldoBilletera);
 
-  // --- Alerta de Pago (Nueva Función 3) ---
-  const proximoPago = new Date(fechaReferencia);
-  proximoPago.setMonth(proximoPago.getMonth() + 1);
+  // --- Alerta de Pago (Siempre el día 5 de cada mes) ---
+  const diaPagoFijo = 5;
+  const ultimoPagoMes = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion).getMonth() : -1;
+  const ultimoPagoAnio = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion).getFullYear() : -1;
+
+  // Si ya pagó este mes, el próximo pago es el 5 del mes siguiente
+  // Si no ha pagado este mes, el pago es el 5 de este mes
+  let mesPago = hoy.getMonth();
+  let anioPago = hoy.getFullYear();
+
+  if (ultimoPagoMes === hoy.getMonth() && ultimoPagoAnio === hoy.getFullYear()) {
+    mesPago += 1;
+    if (mesPago > 11) {
+      mesPago = 0;
+      anioPago += 1;
+    }
+  }
+
+  const proximoPago = new Date(anioPago, mesPago, diaPagoFijo);
   const diasParaPago = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
 
   // --- Obtener Préstamos Financiados ---

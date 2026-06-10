@@ -688,16 +688,39 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
   );
 
   const hoy = new Date();
-  const proximosPagos = inversiones.map(inv => {
-    // Calcular el día del mes en que se hizo la inversión
-    const fechaInv = new Date(inv.fecha_inversion);
-    const diaPago = fechaInv.getDate();
-    
-    // Calcular fecha del próximo pago (este mes o el siguiente)
-    let proximoPago = new Date(hoy.getFullYear(), hoy.getMonth(), diaPago);
-    if (proximoPago < hoy) {
-      proximoPago.setMonth(proximoPago.getMonth() + 1);
+  const diaPagoFijo = 5; // Todos los pagos el día 5 de cada mes
+
+  const proximosPagos = await Promise.all(inversiones.map(async inv => {
+    // Verificar si ya se pagó el interés del mes actual
+    const { rows: pagosMes } = await db.query(
+      `SELECT id FROM movimientos 
+       WHERE inversion_id = $1 
+       AND tipo = 'devolucion_inversion' 
+       AND monto_interes > 0
+       AND EXTRACT(MONTH FROM fecha_operacion) = $2
+       AND EXTRACT(YEAR FROM fecha_operacion) = $3
+       LIMIT 1`,
+      [inv.id, hoy.getMonth() + 1, hoy.getFullYear()]
+    );
+    const yaPagoEsteMes = pagosMes.length > 0;
+
+    // Calcular el próximo pago: si ya pagó este mes, el próximo es el 5 del mes siguiente
+    // si no ha pagado, el pago es el 5 de este mes (o del siguiente si ya pasó)
+    let mesPago = hoy.getMonth();
+    let anioPago = hoy.getFullYear();
+
+    if (yaPagoEsteMes) {
+      mesPago += 1;
+      if (mesPago > 11) {
+        mesPago = 0;
+        anioPago += 1;
+      }
+    } else if (hoy.getDate() > diaPagoFijo) {
+      // No ha pagado y ya pasó el día 5, el pago era este mes
+      mesPago = hoy.getMonth();
     }
+
+    const proximoPago = new Date(anioPago, mesPago, diaPagoFijo);
 
     const diasRestantes = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
     const montoInteres = parseFloat(inv.monto_invertido) * (parseFloat(inv.tasa_interes_pactada) / 100);
@@ -708,13 +731,19 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
       monto_a_pagar: montoInteres,
       fecha_pago: proximoPago,
       dias_restantes: diasRestantes,
-      nivel_alerta: diasRestantes <= 3 ? 'urgente' : 'proximo'
+      nivel_alerta: diasRestantes <= 3 ? 'urgente' : (diasRestantes <= 0 ? 'vencido' : 'proximo'),
+      ya_pago_este_mes: yaPagoEsteMes
     };
-  }).filter(p => p.dias_restantes <= 15); // Mostrar solo los próximos 15 días
+  }));
+
+  // Filtrar: solo mostrar si no ha pagado este mes y está dentro de los próximos 15 días
+  const pagosPendientes = proximosPagos
+    .filter(p => !p.ya_pago_este_mes && p.dias_restantes <= 15)
+    .map(p => ({ ...p, ya_pago_este_mes: undefined })); // Limpiar flag interno
 
   res.json({
     success: true,
-    data: proximosPagos
+    data: pagosPendientes
   });
 });
 
