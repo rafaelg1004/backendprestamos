@@ -184,9 +184,9 @@ const obtenerInversion = asyncHandler(async (req, res) => {
   const interesDisponibleEspecifico = Math.max(0, interesesGenerados - interesPagado);
 
   const ultimoPagoInteres = movimientos.find(m => m.tipo === 'devolucion_inversion' && parseFloat(m.monto_interes) > 0);
-  const fechaReferencia = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion) : new Date(inversion.fecha_inversion);
   
   const hoy = new Date();
+  hoy.setUTCHours(0, 0, 0, 0);
   
   // Obtener saldo de la billetera del inversionista para no sugerir más de lo que realmente tiene en total
   const { rows: [billetera] } = await db.query(
@@ -200,23 +200,39 @@ const obtenerInversion = asyncHandler(async (req, res) => {
 
   // --- Alerta de Pago (Siempre el día 5 de cada mes) ---
   const diaPagoFijo = 5;
-  const ultimoPagoMes = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion).getMonth() : -1;
-  const ultimoPagoAnio = ultimoPagoInteres ? new Date(ultimoPagoInteres.fecha_operacion).getFullYear() : -1;
+  const fechaInversion = new Date(inversion.fecha_inversion);
+  fechaInversion.setUTCHours(0, 0, 0, 0);
 
-  // Si ya pagó este mes, el próximo pago es el 5 del mes siguiente
-  // Si no ha pagado este mes, el pago es el 5 de este mes
-  let mesPago = hoy.getMonth();
-  let anioPago = hoy.getFullYear();
+  let mesPago, anioPago;
 
-  if (ultimoPagoMes === hoy.getMonth() && ultimoPagoAnio === hoy.getFullYear()) {
-    mesPago += 1;
+  if (ultimoPagoInteres) {
+    // Ya ha pagado antes - el próximo es el mes siguiente al último pago
+    const ultimoPagoMes = new Date(ultimoPagoInteres.fecha_operacion).getUTCMonth();
+    const ultimoPagoAnio = new Date(ultimoPagoInteres.fecha_operacion).getUTCFullYear();
+    mesPago = ultimoPagoMes + 1;
+    anioPago = ultimoPagoAnio;
     if (mesPago > 11) {
       mesPago = 0;
       anioPago += 1;
     }
+  } else {
+    // Nunca ha pagado - primera fecha de pago basada en fecha de inversión
+    if (fechaInversion.getUTCDate() <= diaPagoFijo) {
+      // Invertió antes del día 5: primer pago el 5 de este mes
+      mesPago = fechaInversion.getUTCMonth();
+      anioPago = fechaInversion.getUTCFullYear();
+    } else {
+      // Invertió después del día 5: primer pago el 5 del mes siguiente
+      mesPago = fechaInversion.getUTCMonth() + 1;
+      anioPago = fechaInversion.getUTCFullYear();
+      if (mesPago > 11) {
+        mesPago = 0;
+        anioPago += 1;
+      }
+    }
   }
 
-  const proximoPago = new Date(anioPago, mesPago, diaPagoFijo);
+  const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo));
   const diasParaPago = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
 
   // --- Obtener Préstamos Financiados ---
