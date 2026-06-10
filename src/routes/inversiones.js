@@ -55,6 +55,16 @@ router.post(
   inversionesController.registrarPagoInversionista
 );
 
+// POST /api/inversiones/:id/interes-historico - Registrar interés histórico o manual
+router.post(
+  '/:id/interes-historico',
+  [
+    validaciones.uuid('id'),
+    validaciones.montoPositivo('monto'),
+    handleValidationErrors
+  ],
+  inversionesController.registrarInteresHistorico
+);
 
 // DELETE /api/inversiones/:id - Eliminar inversión
 router.delete(

@@ -358,6 +358,72 @@ const registrarPagoInversionista = asyncHandler(async (req, res) => {
   }
 });
 
+const registrarInteresHistorico = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { monto, notas } = req.body;
+
+  if (!monto || parseFloat(monto) <= 0) {
+    throw new AppError("El monto debe ser mayor a 0", 400);
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1. Validar inversión
+    const { rows: [inversion] } = await client.query(
+      "SELECT * FROM inversiones WHERE id = $1",
+      [id]
+    );
+
+    if (!inversion) {
+      throw new AppError("Inversión no encontrada", 404);
+    }
+
+    // 2. Obtener billetera del inversionista
+    const { rows: [billetera] } = await client.query(
+      "SELECT id FROM cuentas WHERE tipo = 'billetera' AND perfil_id = $1",
+      [inversion.inversionista_id]
+    );
+
+    if (!billetera) {
+      throw new AppError("El inversionista no tiene billetera virtual configurada", 400);
+    }
+
+    // 3. Crear movimiento de ganancia_interes
+    const { rows: [movimiento] } = await client.query(
+      `INSERT INTO movimientos (
+        perfil_id, inversion_id, cuenta_id, monto_total, monto_capital, 
+        monto_interes, tipo, fecha_operacion, notas, usuario_id
+      ) VALUES ($1, $2, $3, $4, 0, $5, 'ganancia_interes', $6, $7, $8) RETURNING *`,
+      [
+        inversion.inversionista_id, 
+        id, 
+        billetera.id, 
+        parseFloat(monto), 
+        parseFloat(monto), 
+        new Date().toISOString(), 
+        notas || 'Registro de interés histórico/manual', 
+        req.user ? req.user.id : null
+      ]
+    );
+
+    // 4. Sumar saldo a la billetera virtual
+    await client.query(
+      "UPDATE cuentas SET saldo_actual = saldo_actual + $1 WHERE id = $2",
+      [parseFloat(monto), billetera.id]
+    );
+
+    await client.query("COMMIT");
+    res.json({ success: true, data: movimiento });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw new AppError(error.message, error.statusCode || 500);
+  } finally {
+    client.release();
+  }
+});
+
 const actualizarInversion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { tasa_interes_pactada, notas, estado } = req.body;
@@ -489,5 +555,6 @@ module.exports = {
   registrarPagoInversionista,
   eliminarInversion,
   obtenerInversionistaPorCedulaPublico,
-  prepararCarpetaInversion
+  prepararCarpetaInversion,
+  registrarInteresHistorico
 };
