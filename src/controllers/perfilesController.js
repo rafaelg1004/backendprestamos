@@ -293,20 +293,66 @@ const obtenerResumenPerfil = asyncHandler(async (req, res) => {
   let resumen = {};
 
   if (perfil.rol === "cliente") {
-    // Obtener estadísticas de préstamos usando pg
+    // 1. Obtener lista de préstamos del cliente
     const { rows: prestamos } = await db.query(
-      "SELECT estado, monto_principal FROM prestamos WHERE cliente_id = $1",
+      "SELECT id, monto_principal, tasa_interes_mensual, estado, fecha_inicio FROM prestamos WHERE cliente_id = $1 ORDER BY fecha_inicio DESC",
       [id],
     );
+
+    // 2. Obtener movimientos de pagos de este cliente
+    const { rows: movimientos } = await db.query(
+      "SELECT prestamo_id, monto_capital, monto_interes FROM movimientos WHERE perfil_id = $1 AND tipo = 'pago_cliente'",
+      [id]
+    );
+
+    let cap_inicial = 0, cap_pag = 0, int_pag = 0, cap_pend = 0, int_pend = 0;
+    let suma_tasa_ponderada = 0;
+    let capital_activo_total = 0;
+
+    for (const pres of prestamos) {
+      const montoInicial = parseFloat(pres.monto_principal || 0);
+      cap_inicial += montoInicial;
+
+      let cPag = 0, iPag = 0;
+      for (const mov of movimientos) {
+        if (mov.prestamo_id === pres.id) {
+          cPag += parseFloat(mov.monto_capital || 0);
+          iPag += parseFloat(mov.monto_interes || 0);
+        }
+      }
+      cap_pag += cPag;
+      int_pag += iPag;
+
+      const pendiente = (montoInicial - cPag);
+      cap_pend += pendiente;
+
+      if (pres.estado !== 'pagado' && pendiente > 0) {
+        const tasa = parseFloat(pres.tasa_interes_mensual || 0);
+        suma_tasa_ponderada += (tasa * pendiente);
+        capital_activo_total += pendiente;
+
+        // Calcular intereses pendientes aproximados
+        const fechaPres = new Date(pres.fecha_inicio);
+        const hoy = new Date();
+        const mesesTranscurridos = (hoy - fechaPres) / (1000 * 60 * 60 * 24 * 30.44);
+        const interesEsperado = montoInicial * (tasa / 100) * mesesTranscurridos;
+        int_pend += Math.max(0, interesEsperado - iPag);
+      }
+    }
+
+    const tasa_promedio = capital_activo_total > 0 ? (suma_tasa_ponderada / capital_activo_total) : 0;
 
     resumen = {
       totalPrestamos: prestamos.length,
       prestamosActivos: prestamos.filter((p) => p.estado === "activo").length,
       prestamosMora: prestamos.filter((p) => p.estado === "mora").length,
-      montoTotalPrestado: prestamos.reduce(
-        (sum, p) => sum + parseFloat(p.monto_principal),
-        0,
-      ),
+      montoTotalPrestado: Math.round(cap_inicial),
+      capital_inicial: Math.round(cap_inicial),
+      capital_pagado: Math.round(cap_pag),
+      intereses_pagados: Math.round(int_pag),
+      capital_pendiente: Math.round(cap_pend),
+      intereses_pendientes: Math.round(int_pend),
+      tasa_promedio: parseFloat(tasa_promedio.toFixed(2))
     };
   } else if (perfil.rol === "inversionista") {
     // 2. Obtener lista de inversiones activas
