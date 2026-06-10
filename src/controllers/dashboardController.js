@@ -689,7 +689,9 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
   hoy.setUTCHours(0, 0, 0, 0);
 
   const proximosPagos = await Promise.all(inversiones.map(async inv => {
-    // Verificar si ya se pagó el interés del mes actual
+    // Verificar si ya se pagó el interés del mes actual (usando UTC)
+    const mesActualUTC = hoy.getUTCMonth() + 1;
+    const anioActualUTC = hoy.getUTCFullYear();
     const { rows: pagosMes } = await db.query(
       `SELECT id FROM movimientos 
        WHERE inversion_id = $1 
@@ -698,7 +700,7 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
        AND EXTRACT(MONTH FROM fecha_operacion) = $2
        AND EXTRACT(YEAR FROM fecha_operacion) = $3
        LIMIT 1`,
-      [inv.id, hoy.getMonth() + 1, hoy.getFullYear()]
+      [inv.id, mesActualUTC, anioActualUTC]
     );
     const yaPagoEsteMes = pagosMes.length > 0;
 
@@ -747,11 +749,11 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
           }
         }
       } else {
-        // Creada después del día 5: primer pago el 5 del mes QUE VIENE (ej: 10/jun -> 5/ago)
-        mesPago = fechaInversion.getUTCMonth() + 2;
+        // Creada después del día 5: primer pago el 5 del mes SIGUIENTE (ej: 10/jun -> 5/jul)
+        mesPago = fechaInversion.getUTCMonth() + 1;
         anioPago = fechaInversion.getUTCFullYear();
         if (mesPago > 11) {
-          mesPago = mesPago - 12;
+          mesPago = 0;
           anioPago += 1;
         }
       }
