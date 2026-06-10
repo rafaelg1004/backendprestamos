@@ -732,30 +732,13 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     let mesPago, anioPago;
 
     if (esNuevaInversion) {
-      // Inversión sin pagos previos
-      if (fechaInversion.getUTCDate() <= diaPagoFijo) {
-        // Creada antes o el día del pago: primer pago el 5 de este mes (si aplica) o siguiente
-        if (hoy.getUTCDate() <= diaPagoFijo && hoy.getUTCMonth() === fechaInversion.getUTCMonth() && hoy.getUTCFullYear() === fechaInversion.getUTCFullYear()) {
-          // Aún estamos a tiempo para este mes
-          mesPago = hoy.getUTCMonth();
-          anioPago = hoy.getUTCFullYear();
-        } else {
-          // Ya pasó el día 5 de este mes, primer pago el 5 del mes siguiente
-          mesPago = fechaInversion.getUTCMonth() + 1;
-          anioPago = fechaInversion.getUTCFullYear();
-          if (mesPago > 11) {
-            mesPago = 0;
-            anioPago += 1;
-          }
-        }
-      } else {
-        // Creada después del día 5: primer pago el 5 del mes SIGUIENTE (ej: 10/jun -> 5/jul)
-        mesPago = fechaInversion.getUTCMonth() + 1;
-        anioPago = fechaInversion.getUTCFullYear();
-        if (mesPago > 11) {
-          mesPago = 0;
-          anioPago += 1;
-        }
+      // Inversión sin pagos previos: primer pago el 5 del mes SIGUIENTE a la inversión
+      // Ej: Inversión mayo/junio -> Primer pago 5 de julio
+      mesPago = fechaInversion.getUTCMonth() + 1;
+      anioPago = fechaInversion.getUTCFullYear();
+      if (mesPago > 11) {
+        mesPago = 0;
+        anioPago += 1;
       }
     } else if (yaPagoEsteMes) {
       // Ya pagó este mes, el próximo es el 5 del mes siguiente

@@ -216,19 +216,13 @@ const obtenerInversion = asyncHandler(async (req, res) => {
       anioPago += 1;
     }
   } else {
-    // Nunca ha pagado - primera fecha de pago basada en fecha de inversión
-    if (fechaInversion.getUTCDate() <= diaPagoFijo) {
-      // Invertió antes del día 5: primer pago el 5 de este mes
-      mesPago = fechaInversion.getUTCMonth();
-      anioPago = fechaInversion.getUTCFullYear();
-    } else {
-      // Invertió después del día 5: primer pago el 5 del mes siguiente
-      mesPago = fechaInversion.getUTCMonth() + 1;
-      anioPago = fechaInversion.getUTCFullYear();
-      if (mesPago > 11) {
-        mesPago = 0;
-        anioPago += 1;
-      }
+    // Nunca ha pagado - primera fecha de pago: el 5 del mes SIGUIENTE a la inversión
+    // Ej: Inversión mayo/junio -> Primer pago 5 de julio
+    mesPago = fechaInversion.getUTCMonth() + 1;
+    anioPago = fechaInversion.getUTCFullYear();
+    if (mesPago > 11) {
+      mesPago = 0;
+      anioPago += 1;
     }
   }
 
