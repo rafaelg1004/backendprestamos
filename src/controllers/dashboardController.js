@@ -12,7 +12,11 @@ const {
  * GET /api/dashboard/resumen
  */
 const obtenerResumen = asyncHandler(async (req, res) => {
-  // Intentar usar la vista de balance general primero
+  // FORZAR CÁLCULO MANUAL - La vista tiene problemas con datos NULL
+  const usarVista = false; // Cambiar a true cuando la vista funcione correctamente
+  
+  // Intentar usar la vista de balance general primero (solo si usarVista es true)
+  if (usarVista) {
   try {
     const {
       rows: [balanceVista],
@@ -167,6 +171,7 @@ const obtenerResumen = asyncHandler(async (req, res) => {
     // Continuar al fallback si hay error o la vista no existe
     console.log("Error consultando vista, usando cálculo manual:", err.message);
   }
+  } // Cierre del if(usarVista)
 
   // Fallback: Calcular manualmente
   const { rows: perfilesStats } = await db.query("SELECT rol FROM perfiles");
