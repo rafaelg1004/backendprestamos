@@ -374,13 +374,13 @@ const obtenerAlertasVencimientos = asyncHandler(async (req, res) => {
     const fechaRef = p.fecha_ultimo_corte ? new Date(p.fecha_ultimo_corte) : new Date(p.fecha_inicio);
     const fechaVenc = new Date(fechaRef);
     fechaVenc.setDate(fechaVenc.getDate() + 30);
-    
+
     // Si la fecha de vencimiento final es antes, usamos esa
     const fechaVencFinal = p.fecha_vencimiento ? new Date(p.fecha_vencimiento) : null;
     const proximaFechaPago = (fechaVencFinal && fechaVencFinal < fechaVenc) ? fechaVencFinal : fechaVenc;
-    
+
     const diasRestantes = Math.ceil((proximaFechaPago - hoy) / (1000 * 60 * 60 * 24));
-    
+
     // Interés aproximado que debería al día de pago
     const tasaDiaria = parseFloat(p.tasa_interes_mensual) / 30 / 100;
     const interesGenerado = parseFloat(p.saldo_capital) * tasaDiaria * 30; // aprox mensual
@@ -704,15 +704,36 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     );
     const yaPagoEsteMes = pagosMes.length > 0;
 
-    // Calcular el próximo pago: si ya pagó este mes, el próximo es el 5 del mes siguiente
-    // si no ha pagado, el pago es el 5 de este mes (o del siguiente si ya pasó)
+    // Verificar si es una inversión nueva (sin pagos previos de intereses)
+    const { rows: pagosPrevios } = await db.query(
+      `SELECT fecha_operacion FROM movimientos 
+       WHERE inversion_id = $1 
+       AND tipo = 'devolucion_inversion' 
+       AND monto_interes > 0
+       ORDER BY fecha_operacion ASC
+       LIMIT 1`,
+      [inv.id]
+    );
+    const esNuevaInversion = pagosPrevios.length === 0;
+    const fechaInversion = new Date(inv.fecha_inversion);
+
+    // Calcular el próximo pago
     let mesPago = hoy.getMonth();
     let anioPago = hoy.getFullYear();
 
     if (yaPagoEsteMes) {
+      // Ya pagó este mes, el próximo es el 5 del mes siguiente
       mesPago += 1;
       if (mesPago > 11) {
         mesPago = 0;
+        anioPago += 1;
+      }
+    } else if (esNuevaInversion && fechaInversion.getDate() > diaPagoFijo) {
+      // Inversión nueva creada después del día 5: primer pago el 5 del mes SIGUIENTE AL SIGUIENTE (ej: 10/jun -> 5/ago)
+      mesPago = fechaInversion.getMonth() + 2;
+      anioPago = fechaInversion.getFullYear();
+      if (mesPago > 11) {
+        mesPago = mesPago - 12;
         anioPago += 1;
       }
     } else if (hoy.getDate() > diaPagoFijo) {
