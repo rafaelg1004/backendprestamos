@@ -689,21 +689,6 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
   hoy.setUTCHours(0, 0, 0, 0);
 
   const proximosPagos = await Promise.all(inversiones.map(async inv => {
-    // Verificar si ya se pagó el interés del mes actual (usando UTC)
-    const mesActualUTC = hoy.getUTCMonth() + 1;
-    const anioActualUTC = hoy.getUTCFullYear();
-    const { rows: pagosMes } = await db.query(
-      `SELECT id FROM movimientos 
-       WHERE inversion_id = $1 
-       AND tipo = 'devolucion_inversion' 
-       AND monto_interes > 0
-       AND EXTRACT(MONTH FROM fecha_operacion) = $2
-       AND EXTRACT(YEAR FROM fecha_operacion) = $3
-       LIMIT 1`,
-      [inv.id, mesActualUTC, anioActualUTC]
-    );
-    const yaPagoEsteMes = pagosMes.length > 0;
-
     // Verificar si es una inversión nueva (sin pagos previos de intereses)
     const { rows: pagosPrevios } = await db.query(
       `SELECT fecha_operacion FROM movimientos 
@@ -728,42 +713,10 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     );
     const capitalPendiente = parseFloat(inv.monto_invertido) - parseFloat(capitalDevuelto[0].total);
 
-    // Calcular el próximo pago (siempre el día 5)
-    let mesPago, anioPago;
-
-    if (esNuevaInversion) {
-      // Inversión sin pagos previos: primer pago el 5 del mes SIGUIENTE a la inversión
-      // Ej: Inversión mayo/junio -> Primer pago 5 de julio
-      mesPago = fechaInversion.getUTCMonth() + 1;
-      anioPago = fechaInversion.getUTCFullYear();
-      if (mesPago > 11) {
-        mesPago = 0;
-        anioPago += 1;
-      }
-    } else if (yaPagoEsteMes) {
-      // Ya pagó este mes, el próximo es el 5 del mes siguiente
-      mesPago = hoy.getUTCMonth() + 1;
-      anioPago = hoy.getUTCFullYear();
-      if (mesPago > 11) {
-        mesPago = 0;
-        anioPago += 1;
-      }
-    } else {
-      // No es nueva y no ha pagado este mes
-      if (hoy.getUTCDate() <= diaPagoFijo) {
-        // Aún estamos antes del día 5, pago es este mes
-        mesPago = hoy.getUTCMonth();
-        anioPago = hoy.getUTCFullYear();
-      } else {
-        // Ya pasó el día 5, pago es el mes siguiente
-        mesPago = hoy.getUTCMonth() + 1;
-        anioPago = hoy.getUTCFullYear();
-        if (mesPago > 11) {
-          mesPago = 0;
-          anioPago += 1;
-        }
-      }
-    }
+    // Forzar próximo pago a julio 2026 para TODAS las inversiones
+    // (Los pagos de junio fueron ajuste de cuentas de mayo, todos pagan intereses de junio el 5 de julio)
+    const mesPago = 6; // Julio (0-indexed)
+    const anioPago = 2026;
 
     // Crear fecha UTC para cálculos correctos
     const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo));
@@ -782,19 +735,16 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
       monto_a_pagar: montoInteres,
       fecha_pago: fechaPagoStr,
       dias_restantes: diasRestantes,
-      nivel_alerta: diasRestantes <= 3 ? 'urgente' : (diasRestantes <= 0 ? 'vencido' : 'proximo'),
-      ya_pago_este_mes: yaPagoEsteMes
+      nivel_alerta: diasRestantes <= 3 ? 'urgente' : (diasRestantes <= 0 ? 'vencido' : 'proximo')
     };
   }));
 
-  // Mostrar TODOS los pagos pendientes (sin límite de 15 días)
-  const pagosPendientes = proximosPagos
-    .filter(p => !p.ya_pago_este_mes)
-    .map(p => ({ ...p, ya_pago_este_mes: undefined })); // Limpiar flag interno
+  // Mostrar TODAS las inversiones activas (incluyendo Fabian y Laurens)
+  const todasLasInversiones = proximosPagos;
 
   res.json({
     success: true,
-    data: pagosPendientes
+    data: todasLasInversiones
   });
 });
 
