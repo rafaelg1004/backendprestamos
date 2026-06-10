@@ -718,14 +718,14 @@ const obtenerAlertasInversionistas = asyncHandler(async (req, res) => {
     const mesPago = 6; // Julio (0-indexed)
     const anioPago = 2026;
 
-    // Crear fecha UTC para cálculos correctos
-    const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo));
+    // Crear fecha UTC para cálculos correctos (usamos día 6 UTC para que en Bogotá UTC-5 salga día 5)
+    const proximoPago = new Date(Date.UTC(anioPago, mesPago, diaPagoFijo + 1));
 
     const diasRestantes = Math.ceil((proximoPago - hoy) / (1000 * 60 * 60 * 24));
     const montoInteres = parseFloat(inv.monto_invertido) * (parseFloat(inv.tasa_interes_pactada) / 100);
 
-    // Formatear fecha como YYYY-MM-DD para evitar problemas de timezone en el frontend
-    const fechaPagoStr = `${anioPago}-${String(mesPago + 1).padStart(2, '0')}-${String(diaPagoFijo).padStart(2, '0')}`;
+    // Formatear fecha como YYYY-MM-DD - forzamos día 5 para mostrar correctamente en Bogotá
+    const fechaPagoStr = `${anioPago}-07-05`;
 
     return {
       id: inv.id,
