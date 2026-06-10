@@ -166,12 +166,13 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
     tasa_interes,
     fecha_desde,
     fecha_hasta,
-    page = 1,
-    limit = 50,
     solo_mora = false,
   } = req.query;
 
-  const offset = (page - 1) * limit;
+  const limitVal = parseInt(req.query.limit || 50, 10);
+  const pageVal = parseInt(req.query.page || 1, 10);
+  const offsetVal = (pageVal - 1) * limitVal;
+
   let queryText = `
     SELECT p.*, 
       json_build_object(
@@ -228,7 +229,7 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
   }
 
   queryText += ` ORDER BY p.fecha_inicio DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-  queryParams.push(limit, offset);
+  queryParams.push(limitVal, offsetVal);
 
   try {
     const { rows: prestamos } = await db.query(queryText, queryParams);
@@ -259,9 +260,9 @@ const obtenerPrestamos = asyncHandler(async (req, res) => {
       data: prestamosConCalculos || [],
       pagination: {
         total: totalCount,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(totalCount / limit)
+        page: pageVal,
+        limit: limitVal,
+        pages: Math.ceil(totalCount / limitVal)
       }
     });
   } catch (error) {
